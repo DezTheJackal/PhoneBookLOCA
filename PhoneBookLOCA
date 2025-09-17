@@ -1,0 +1,17 @@
+
+
+import phonenumbers   # pyright: ignore[reportMissingImports]
+
+from phonenumbers import geocoder # pyright: ignore[reportMissingImports]
+
+import time, random 
+
+def start_Phone_Book_Loca(target):
+    print(f"[+] PhoneBookLOCA v0.1 - OSINT")
+    print(f"[*] Target: {target}")
+    print(f"[*] Initiating trace ... :-) ")
+    p = phonenumbers.parse(target, None)
+    r = geocoder.description_for_numbers(p) 
+    print(f"[+] Location: {r}")
+    print(f"[+] Trace Complete")
+start_Phone_Book_Loca("+1-555-0123")
