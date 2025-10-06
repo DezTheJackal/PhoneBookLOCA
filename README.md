@@ -34,3 +34,21 @@ python PhoneBookLOCA.py +14155552671
 python PhoneBookLOCA.py +442071838750
 
 The tool is now production-ready and super easy to use! Remember: Phone numbers must include country code (e.g., +1 for US, +44 for UK).
+
+cd /home/dezthejackal/PhoneBookLOCA/ 
+
+Create the file:
+Use nano (easiest)
+nano PhoneBookLOCA.py
+Paste the code I provided in the Git Hub in the nano text
+Press Ctrl + X, then Y, then Enter to save
+
+Make it executable (optional)
+chmod +x PhoneBookLOCA.py
+
+Verify the file exists
+ls -la PhoneBookLOCA.py
+
+Run it
+python3 PhoneBookLOCA.py
+
