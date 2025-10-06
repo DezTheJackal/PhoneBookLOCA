@@ -12,7 +12,7 @@ from phonenumbers import geocoder, carrier, timezone
 def print_banner():
     """Display the tool banner"""
     print("\n" + "="*50)
-    print("  PhoneBookLOCA v1.0 - OSINT Phone Lookup [DEV: DEZTHEJACKAL] ")
+    print("  PhoneBookLOCA v1.0 - OSINT Phone Lookup DEV DEZTHEJACKAL ")
     print("="*50 + "\n")
 
 
