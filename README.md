@@ -40,7 +40,8 @@ cd /home/dezthejackal/PhoneBookLOCA/
 Create the file:
 Use nano (easiest)
 nano PhoneBookLOCA.py
-Paste the code I provided in the Git Hub in the nano text
+Paste the code I provided in the 
+Git Hub in the nano text
 Press Ctrl + X, then Y, then Enter to save
 
 Make it executable (optional)
