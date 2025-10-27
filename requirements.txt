@@ -1,1 +1,11 @@
+# PhoneBookLOCA v2.0 Requirements
+# Maintained by: 0xb0rn3 | oxbv1
+
+# Core dependencies (required)
 phonenumbers>=8.12.0
+requests>=2.25.0
+
+# Optional - Rich Terminal UI (highly recommended for v2.0 features)
+# Provides beautiful formatting, progress bars, and enhanced UX
+# Tool still works without it, but with basic formatting
+rich>=13.0.0
