@@ -66,6 +66,181 @@
 - Clean stderr/stdout separation
 
 ---
+# Contributors
+
+## Creator
+
+**DezTheJackal** - Creator and maintainer of PhoneBookLOCA
+- Original concept and implementation (v1.0)
+- Core phone number lookup functionality
+- Base architecture and design
+- Foundation for all subsequent features
+- **v2.1 Law Enforcement Geolocation Features** (2025)
+  - Enhanced geolocation system
+  - Law enforcement investigation interface
+  - Professional report generation (JSON, CSV, HTML)
+  - Case tracking and management
+  - Cell tower proximity analysis
+  - Missing persons investigation tools
+  - Legal compliance framework
+
+---
+
+## v1.1 Contributions
+
+**0xb0rn3 | oxbv1** - OSINT intelligence platform and API integration
+
+### Web Intelligence Features
+- Go-powered concurrent web scanner
+- OSINT query generation system
+- Automated lookup URL generation
+- Clean results presentation
+
+### Security & Analysis Features
+- VoIP/disposable number detection
+- Reputation checking framework
+- Pattern analysis in session statistics
+- Number format variant generation
+
+### API & Integration
+- NumVerify integration (free tier)
+- Twilio Lookup integration (paid)
+- Prompt-based API configuration
+- Persistent API key storage
+
+### Installation & Platform Support
+- Multi-platform installer (install.sh)
+- Cross-platform compatibility
+- Package manager detection
+
+---
+
+## v2.0 Contributions
+
+**0xb0rn3 | oxbv1** - Professional platform transformation
+
+### Core Infrastructure
+- SQLite caching system for 10x performance
+- Persistent cache database with expiration
+- Confidence scoring per cached entry
+- Historical event logging
+- Cache management commands
+
+### Advanced Reputation Engine
+- Multi-source aggregation (6+ free sources)
+- Concurrent checking with ThreadPoolExecutor
+- Weighted scoring algorithm (0-100 scale)
+- Risk level classification
+- Confidence scoring
+
+### Enhanced Carrier Intelligence
+- MNO vs MVNO detection
+- Parent network identification
+- Network technology enumeration
+- Security features detection
+- Spam tolerance assessment
+
+### ML-Powered Risk Classification
+- Multi-factor risk scoring
+- Usage indicators detection
+- Anomaly detection framework
+- Automated recommendations
+
+### Rich Terminal UI
+- Beautiful panel-based layout (optional)
+- Color-coded risk levels
+- Structured information sections
+- Progress indicators
+
+---
+
+## v2.1 Contributions (Law Enforcement Edition)
+
+**DezTheJackal** - Enhanced geolocation and law enforcement tools
+
+### Enhanced Geolocation System
+- Area code and exchange mapping database
+  - Comprehensive US/Canada NANP coverage
+  - City, county, state, and coordinate data
+  - Population and timezone information
+  - ±5-50 km precision levels
+
+- Cell tower proximity analysis
+  - Public cell tower database integration
+  - Distance calculations using Haversine formula
+  - Technology detection (5G, LTE, 4G, 3G)
+  - Carrier infrastructure mapping
+
+- Geographic intelligence
+  - Coordinate estimation with confidence scoring
+  - Multi-source data aggregation
+  - Precision level classification
+  - Accuracy radius calculation
+
+### Law Enforcement Investigation Interface
+- Interactive LE mode workflow
+  - Case information collection
+  - Automated enhanced geolocation
+  - Carrier legal contact retrieval
+  - Investigative lead generation
+
+- Case tracking system
+  - SQLite database for case management
+  - Case number, officer, agency tracking
+  - Priority and status management
+  - Timestamp and notes
+
+### Professional Report Generation
+- JSON export
+  - Machine-readable format
+  - Complete case documentation
+  - Legal disclaimers included
+  - Systems integration ready
+
+- CSV export
+  - Spreadsheet-compatible format
+  - Flattened data structure
+  - Easy import to case management systems
+
+- HTML export
+  - Professional formatted reports
+  - Legal disclaimer sections
+  - Interactive map links
+  - Carrier contact information
+  - Browser-ready for printing/sharing
+
+### Legal Compliance Framework
+- Data limitation disclaimers
+  - Clear explanation of approximate nature
+  - Legal requirements for real-time tracking
+  - Warrant and court order guidance
+
+- Carrier legal contact database
+  - Verizon Wireless contacts
+  - AT&T contacts
+  - T-Mobile contacts
+  - Emergency 24/7 numbers
+  - Legal compliance departments
+
+- Investigative recommendations
+  - Immediate action suggestions
+  - Legal next steps
+  - Search area calculations
+  - Resource deployment guidance
+
+### Missing Persons Investigation Tools
+- Search area estimation
+- Priority level assessment
+- Resource recommendation system
+- Timeline estimates for carrier response
+- Risk factor identification
+
+---
+
+## How to Contribute
+
+[Rest of contribution guidelines remain the same...]
+---
 
 ## How to Contribute
 
