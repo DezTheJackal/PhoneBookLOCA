@@ -7,6 +7,171 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.0] - 2025-11-26
+
+### 🚨 Major Release - Law Enforcement Edition
+
+**Developed by:** DezTheJackal
+
+This release adds professional law enforcement tools for missing persons investigations and authorized legal use.
+
+### Added
+
+#### Law Enforcement Features
+
+- **Enhanced Geolocation System**
+  - Maximum legal precision location intelligence (±5-50 km)
+  - Area code and exchange mapping with coordinates
+  - Cell tower proximity analysis
+  - Geographic coordinate estimation with confidence scoring
+  - Multi-source data aggregation
+
+- **Law Enforcement Investigation Interface**
+  - Interactive LE mode with case management
+  - Case tracking system with SQLite database
+  - Professional report generation (JSON, CSV, HTML)
+  - Carrier legal compliance contact database
+  - Investigative lead generation
+  - Missing persons investigation workflow
+
+- **Professional Report Exports**
+  - JSON format for systems integration
+  - CSV format for spreadsheet import
+  - HTML format with professional formatting
+  - Automatic legal disclaimers
+  - Carrier contact information
+  - Map links and coordinates
+  - Browser integration for HTML reports
+
+- **Cell Tower Analysis**
+  - Nearby tower identification from public databases
+  - Distance calculations using Haversine formula
+  - Technology detection (5G, LTE, 4G, 3G)
+  - Carrier infrastructure mapping
+  - Coverage area estimation
+
+- **Legal Compliance Framework**
+  - Clear data limitation disclaimers
+  - Warrant guidance for real-time tracking
+  - Carrier contact information for legal requests
+  - Emergency ping procedures documentation
+  - Legal notice system in all reports and outputs
+
+#### Database Schema
+```sql
+-- Enhanced geolocation tables
+CREATE TABLE area_code_mapping (
+    area_code TEXT, exchange TEXT, city TEXT, state TEXT, county TEXT,
+    latitude REAL, longitude REAL, population INTEGER, timezone TEXT
+);
+
+CREATE TABLE cell_towers (
+    tower_id TEXT PRIMARY KEY, carrier TEXT,
+    latitude REAL, longitude REAL, range_km REAL,
+    technology TEXT, area_code TEXT, city TEXT, state TEXT
+);
+
+CREATE TABLE geolocation_cache (
+    number TEXT PRIMARY KEY, precision_level TEXT,
+    country TEXT, state TEXT, city TEXT, county TEXT,
+    latitude REAL, longitude REAL, radius_km REAL,
+    confidence REAL, data_sources TEXT, last_updated TIMESTAMP
+);
+
+CREATE TABLE le_cases (
+    case_id INTEGER PRIMARY KEY, case_number TEXT UNIQUE,
+    number TEXT, officer_name TEXT, agency TEXT,
+    case_type TEXT, priority TEXT, status TEXT,
+    created_date TIMESTAMP, last_updated TIMESTAMP, notes TEXT
+);
+```
+
+### New Commands
+```bash
+--geo                          # Enhanced geolocation analysis
+--le-mode                      # Law enforcement investigation mode
+```
+
+### New Interactive Commands
+```
+geo <number>                   # Enhanced geolocation lookup
+le-mode                        # Law enforcement interface
+```
+
+### Changed
+
+#### Output Format
+
+- Enhanced terminal output with geolocation intelligence:
+  - Precision level and confidence scoring
+  - Geographic coordinates with accuracy radius
+  - Detailed address information (city, county, state)
+  - Cell tower proximity data
+  - Legal notices and disclaimers
+
+#### Behavior
+
+- **New LE mode** provides guided investigation workflow
+- **Geolocation cache** stores location data for 7 days
+- **Case tracking** persists investigation data
+- **Report export** generates professional documentation
+
+### Improved
+
+#### Location Intelligence
+
+- Maximum legal precision geolocation
+- Area code/exchange mapping (±5 km accuracy)
+- Cell tower proximity analysis
+- Confidence scoring system
+- Multiple data source aggregation
+
+#### Investigation Tools
+
+- Case management workflow
+- Professional report generation
+- Carrier legal contact database
+- Investigative lead generation
+- Search area calculation
+
+#### User Experience
+
+- Clear legal disclaimers
+- Guided LE investigation workflow
+- Professional report formats
+- Map link generation
+- Browser integration for reports
+
+### Legal & Compliance
+
+**Important:** This version provides approximate location intelligence using public data sources only.
+
+- **What it provides:** Geographic approximation, carrier contacts, investigative leads
+- **What it does NOT provide:** Real-time GPS, live tracking, warrant bypass
+- **Legal requirements:** Real-time tracking requires warrant and carrier cooperation
+
+For missing persons and law enforcement investigations:
+1. Use tool for initial approximation and case documentation
+2. Contact carrier legal compliance with proper authorization
+3. Obtain warrant for real-time location data
+4. Follow proper legal procedures per 18 U.S.C. § 2703
+
+### Documentation
+
+- Updated README.md with v2.1 law enforcement features
+- Updated CONTRIBUTORS.md with DezTheJackal v2.1 credits
+- Added law enforcement usage guide
+- Added legal compliance documentation
+- Added report export documentation
+
+### Breaking Changes
+
+**None!** v2.1 is fully backwards compatible with v2.0.
+
+All existing commands and workflows continue to work without modification.
+
+---
+
 ## [2.0.0] - 2025-10-27
 
 ### 🚀 Major Release - Professional OSINT Platform Transformation
