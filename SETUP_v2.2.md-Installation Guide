@@ -1,0 +1,473 @@
+# PhoneBookLOCA v2.2 Setup Guide
+
+## 🚀 Quick Start
+
+### 1. Installation
+
+```bash
+# Clone repository
+git clone https://github.com/DezTheJackal/PhoneBookLOCA.git
+cd PhoneBookLOCA
+
+# Install dependencies
+pip3 install phonenumbers requests rich
+
+# Make executable
+chmod +x PhoneBookLOCA
+
+# Run
+./PhoneBookLOCA
+```
+
+### 2. Basic Usage
+
+```bash
+# Standard lookup
+./PhoneBookLOCA +14155552671
+
+# Enhanced geolocation
+./PhoneBookLOCA +14155552671 --geo
+
+# Law enforcement mode
+./PhoneBookLOCA --le-mode
+
+# Batch analysis
+./PhoneBookLOCA --batch numbers.txt
+```
+
+-----
+
+## 🌍 What’s New in v2.2
+
+### **1. Worldwide Database**
+
+- **200+ countries** with major cities
+- **Accurate coordinates** for precise geolocation
+- **Timezone information** included
+- **Population data** for context
+
+### **2. OpenCellID Integration (Optional)**
+
+- **40 million+ cell towers** worldwide
+- **Free API** with registration
+- **Real tower data** instead of samples
+- **Much better precision**
+
+### **3. Number Porting Detection**
+
+- Detects if number moved between carriers
+- Critical for accurate geolocation
+- Confidence scoring
+- Historical tracking
+
+### **4. Batch Analysis**
+
+- Analyze multiple numbers at once
+- Pattern detection (clustering, burner farms)
+- Risk assessment
+- Export to JSON
+
+### **5. Enhanced OSINT**
+
+- Automated search query generation
+- Social media presence checking
+- Data breach correlation
+- Investigative recommendations
+
+-----
+
+## ⚙️ Optional API Configuration
+
+### OpenCellID (Highly Recommended)
+
+**Why?** Get real cell tower data for much better geolocation precision.
+
+**Setup:**
+
+1. Register at https://opencellid.org/
+1. Get your free API key
+1. Set environment variable:
+
+```bash
+# Linux/Mac
+export OPENCELLID_API_KEY="your_key_here"
+
+# Or add to ~/.bashrc or ~/.zshrc
+echo 'export OPENCELLID_API_KEY="your_key_here"' >> ~/.bashrc
+source ~/.bashrc
+
+# Windows (Command Prompt)
+set OPENCELLID_API_KEY=your_key_here
+
+# Windows (PowerShell)
+$env:OPENCELLID_API_KEY="your_key_here"
+```
+
+1. Run PhoneBookLOCA - it will automatically use the API
+
+**Free Tier:** 1000 requests/day
+
+-----
+
+## 📊 Feature Comparison
+
+|Feature            |v2.1                  |v2.2                      |
+|-------------------|----------------------|--------------------------|
+|Area codes         |US/Canada only        |Worldwide (200+ countries)|
+|Cell towers        |Sample data (7 towers)|OpenCellID (40M+ towers)  |
+|Porting detection  |❌ No                  |✅ Yes                     |
+|Batch analysis     |❌ No                  |✅ Yes                     |
+|Historical tracking|❌ No                  |✅ Yes                     |
+|OSINT automation   |Basic                 |Enhanced                  |
+|Pattern detection  |❌ No                  |✅ Yes                     |
+
+-----
+
+## 🎯 Usage Examples
+
+### Example 1: Basic Lookup
+
+```bash
+./PhoneBookLOCA +14155552671
+```
+
+**Output:**
+
+```
+📊 Basic Intelligence
+Country: United States (+1)
+Carrier: Verizon Wireless
+Type: Mobile
+Timezone(s): America/Los_Angeles
+```
+
+### Example 2: Enhanced Geolocation
+
+```bash
+./PhoneBookLOCA +14155552671 --geo
+```
+
+**Output:**
+
+```
+📍 Enhanced Geolocation
+Precision: area_code
+Confidence: 70%
+Radius: ±50 km
+
+Coordinates:
+  Lat: 37.774929
+  Lon: -122.419418
+
+Location:
+  City: San Francisco
+  Region: California
+  Country: United States
+
+📡 Cell Towers: 5 nearby
+
+⚠️ Porting Detected:
+Confidence: 75%
+  • Carrier mismatch: Expected AT&T, found Verizon
+  • MVNO carrier (Verizon)
+```
+
+### Example 3: Batch Analysis
+
+Create file `numbers.txt`:
+
+```
++14155552671
++12125552671
++13105552671
++14695552671
++17135552671
+```
+
+Run:
+
+```bash
+./PhoneBookLOCA --batch numbers.txt
+```
+
+**Output:**
+
+```
+[*] Batch Analysis: 5 numbers
+[*] Analyzing patterns...
+
+Total Numbers: 5
+Valid Numbers: 5
+Risk Level: Medium
+Suspicious Patterns: 1
+
+[!] Suspicious Patterns Detected:
+    • High geographic clustering: 5 numbers in 2 locations
+
+[+] Batch report saved: numbers_analysis.json
+```
+
+### Example 4: Law Enforcement Mode
+
+```bash
+./PhoneBookLOCA --le-mode
+```
+
+**Interactive prompts:**
+
+```
+🚨 LAW ENFORCEMENT MODE
+Case Number: MP-2025-001
+Officer Name: Det. John Smith
+Agency: SFPD
+Case Type: missing person
+Priority: high
+
+Subject Phone Number: +14155552671
+
+[+] Case created: ID 1
+[*] Target: +14155552671
+[*] Initiating trace...
+[*] Performing enhanced geolocation analysis...
+
+[Generated comprehensive report with:
+- Geolocation intelligence
+- Porting analysis
+- Historical tracking
+- Carrier legal contacts
+- Map links
+- Investigative recommendations]
+
+Export Options:
+  1) JSON
+  2) CSV
+  3) HTML
+  4) All formats
+  5) Skip
+
+Select [1-5]: 3
+
+[+] HTML saved: ~/.phonebookloca/reports/LE_Report_MP-2025-001_20250120_143000.html
+
+Open HTML in browser? [y/N]: y
+```
+
+### Example 5: OSINT Intelligence
+
+```bash
+./PhoneBookLOCA +14155552671 --osint --geo
+```
+
+**Output includes:**
+
+- Enhanced geolocation
+- OSINT search queries
+- Social media check URLs
+- Data breach recommendations
+- Investigation suggestions
+
+-----
+
+## 🗂️ File Structure
+
+```
+~/.phonebookloca/
+├── intel.db                    # Main cache database
+│   ├── lookups                 # Lookup cache
+│   ├── area_code_mapping       # Worldwide area codes
+│   ├── cell_towers             # Cell tower data
+│   ├── geolocation_cache       # Geo cache
+│   ├── le_cases                # LE case tracking
+│   ├── porting_history         # Porting detection
+│   └── historical_tracking     # Lookup history
+└── reports/                    # Exported reports
+    ├── LE_Report_*.json
+    ├── LE_Report_*.csv
+    └── LE_Report_*.html
+```
+
+-----
+
+## 🔧 Troubleshooting
+
+### Issue: “Module not found”
+
+```bash
+pip3 install phonenumbers requests rich
+```
+
+### Issue: OpenCellID not working
+
+Check if API key is set:
+
+```bash
+echo $OPENCELLID_API_KEY
+```
+
+If empty, set it:
+
+```bash
+export OPENCELLID_API_KEY="your_key_here"
+```
+
+### Issue: Worldwide database not loading
+
+Delete and rebuild database:
+
+```bash
+rm ~/.phonebookloca/intel.db
+./PhoneBookLOCA +14155552671
+```
+
+### Issue: Poor geolocation accuracy
+
+1. **Enable OpenCellID** - Much better precision
+1. **Check if number ported** - Area code may be wrong
+1. **Use –no-cache** - Force fresh lookup
+
+### Issue: Batch analysis not finding patterns
+
+- Need at least 5-10 numbers for pattern detection
+- Numbers must be valid and in same format
+
+-----
+
+## 📈 Performance Tips
+
+### 1. Use Caching
+
+```bash
+# First lookup: 5-10 seconds
+./PhoneBookLOCA +14155552671
+
+# Subsequent: <1 second (cached)
+./PhoneBookLOCA +14155552671
+```
+
+### 2. Batch Processing
+
+```bash
+# Much faster than individual lookups
+./PhoneBookLOCA --batch numbers.txt
+```
+
+### 3. OpenCellID Optimization
+
+```bash
+# Query is cached, so repeated lookups are instant
+export OPENCELLID_API_KEY="your_key"
+./PhoneBookLOCA +14155552671 --geo
+```
+
+-----
+
+## 🔒 Privacy & Legal
+
+### Data Storage
+
+- All data stored locally in `~/.phonebookloca/`
+- No cloud sync
+- No telemetry
+
+### Legal Use Only
+
+- ✅ Law enforcement investigations
+- ✅ Missing persons cases
+- ✅ Authorized security research
+- ✅ Fraud investigation (with authorization)
+- ❌ Stalking or harassment
+- ❌ Unauthorized tracking
+- ❌ Privacy violations
+
+### Real-Time Tracking
+
+PhoneBookLOCA provides **approximate location** based on public data.
+
+For **real-time GPS tracking**, law enforcement must:
+
+1. Obtain warrant/court order
+1. Contact carrier legal compliance
+1. Follow proper legal procedures
+
+-----
+
+## 🆘 Getting Help
+
+### Documentation
+
+- `README.md` - Full documentation
+- `CHANGELOG.md` - Version history
+- This file - Setup guide
+
+### Support
+
+- GitHub Issues: https://github.com/DezTheJackal/PhoneBookLOCA/issues
+- Include: version, OS, error message, steps to reproduce
+
+-----
+
+## ✅ Quick Checklist
+
+Before using PhoneBookLOCA v2.2:
+
+- [ ] Installed dependencies (`pip3 install phonenumbers requests rich`)
+- [ ] Made executable (`chmod +x PhoneBookLOCA`)
+- [ ] (Optional) Registered for OpenCellID API
+- [ ] (Optional) Set OPENCELLID_API_KEY environment variable
+- [ ] Tested basic lookup
+- [ ] Tested enhanced geolocation
+- [ ] Read legal disclaimers
+
+-----
+
+## 🎓 Advanced Usage
+
+### Custom Area Code Database
+
+Edit the `WorldwideDatabase.get_worldwide_area_codes()` function to add your own area codes:
+
+```python
+# Add your custom entries:
+('1', '555', 'Your City', 'Your State', 'Country', lat, lon, pop, 'Timezone'),
+```
+
+### Carrier API Integration
+
+For real carrier API integration (requires LE credentials):
+
+1. Contact carrier legal compliance
+1. Obtain API credentials
+1. Implement in `CarrierAPIIntegration` class
+1. Follow carrier-specific procedures
+
+### Database Management
+
+```bash
+# View cache statistics
+sqlite3 ~/.phonebookloca/intel.db "SELECT COUNT(*) FROM lookups"
+
+# Clear old data
+sqlite3 ~/.phonebookloca/intel.db "DELETE FROM lookups WHERE datetime(last_updated, '+30 days') < datetime('now')"
+
+# Export database
+cp ~/.phonebookloca/intel.db backup_$(date +%Y%m%d).db
+```
+
+-----
+
+## 🌟 Credits
+
+- **Created by:** DezTheJackal
+- **v1.1:** 0xb0rn3 | oxbv1
+- **v2.0:** 0xb0rn3 | oxbv1
+- **v2.1-v2.2:** DezTheJackal
+
+-----
+
+<div align="center">
+
+**PhoneBookLOCA v2.2 - Worldwide OSINT Intelligence**
+
+For authorized law enforcement and security research only
+
+</div>
