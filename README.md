@@ -755,7 +755,35 @@ export OPENCELLID_API_KEY="your_key"
 rm ~/.phonebookloca/intel.db
 ./PhoneBookLOCA +14155552671
 ```
+'''
+### Issue: SyntaxError: invalid character '"' (U+201C)
 
+This occurs when smart quotes are present in the code. Fix it with:
+
+**Quick Fix (One Command):**
+```bash
+sed -i "s/"/\"/g; s/"/\"/g; s/'/'/g; s/'/'/g" PhoneBookLOCA
+chmod +x PhoneBookLOCA
+```
+
+**Or use the automatic fixer:**
+bash
+# Download the fix script
+wget https://raw.githubusercontent.com/DezTheJackal/PhoneBookLOCA/main/fix_quotes.py
+
+# Run it
+python3 fix_quotes.py
+
+# Done!
+./PhoneBookLOCA +14155552671
+```
+
+The fixer will:
+- ✓ Detect and count smart quotes
+- ✓ Create automatic backup
+- ✓ Replace all smart quotes with standard quotes
+- ✓ Make the file executable
+- ✓ Verify the fix worked
 -----
 
 ## 🤝 Contributing
