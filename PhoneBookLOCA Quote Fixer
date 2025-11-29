@@ -1,0 +1,173 @@
+#!/usr/bin/env python3
+"""
+PhoneBookLOCA Quote Fixer
+Automatically fixes smart quotes in the PhoneBookLOCA script
+
+This tool repairs the common issue where smart quotes (", ", ', ')
+get introduced during editing, causing Python syntax errors.
+
+Usage:
+    python3 fix_quotes.py
+    # or
+    ./fix_quotes.py
+
+Created by: DezTheJackal
+For: PhoneBookLOCA v2.2
+"""
+
+import os
+import sys
+from pathlib import Path
+
+def fix_smart_quotes(filename):
+    """
+    Replace all smart quotes with standard quotes
+    
+    Smart quotes that cause errors:
+    - " (U+201C) → " (standard)
+    - " (U+201D) → " (standard)
+    - ' (U+2018) → ' (standard)
+    - ' (U+2019) → ' (standard)
+    """
+    
+    print(f"\n[*] PhoneBookLOCA Quote Fixer")
+    print(f"[*] Checking: {filename}\n")
+    
+    # Check if file exists
+    if not os.path.exists(filename):
+        print(f"[!] Error: {filename} not found")
+        print(f"[*] Make sure you're running this in the PhoneBookLOCA directory")
+        return False
+    
+    # Read file
+    try:
+        with open(filename, 'r', encoding='utf-8') as f:
+            original_content = f.read()
+    except Exception as e:
+        print(f"[!] Error reading file: {e}")
+        return False
+    
+    # Count smart quotes
+    smart_double_open = original_content.count('"')
+    smart_double_close = original_content.count('"')
+    smart_single_open = original_content.count(''')
+    smart_single_close = original_content.count(''')
+    
+    total_smart_quotes = smart_double_open + smart_double_close + smart_single_open + smart_single_close
+    
+    if total_smart_quotes == 0:
+        print(f"[+] No smart quotes found - file is clean!")
+        return True
+    
+    print(f"[!] Found {total_smart_quotes} smart quotes:")
+    print(f"    • Left double quotes ("):  {smart_double_open}")
+    print(f"    • Right double quotes ("): {smart_double_close}")
+    print(f"    • Left single quotes ('):  {smart_single_open}")
+    print(f"    • Right single quotes ('): {smart_single_close}")
+    print(f"\n[*] Fixing quotes...\n")
+    
+    # Replace all smart quotes with standard quotes
+    fixed_content = original_content
+    fixed_content = fixed_content.replace('"', '"')  # Left double quote
+    fixed_content = fixed_content.replace('"', '"')  # Right double quote
+    fixed_content = fixed_content.replace(''', "'")  # Left single quote
+    fixed_content = fixed_content.replace(''', "'")  # Right single quote
+    
+    # Create backup
+    backup_filename = f"{filename}.backup"
+    try:
+        with open(backup_filename, 'w', encoding='utf-8') as f:
+            f.write(original_content)
+        print(f"[+] Backup created: {backup_filename}")
+    except Exception as e:
+        print(f"[!] Warning: Could not create backup: {e}")
+    
+    # Write fixed content
+    try:
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write(fixed_content)
+        print(f"[+] Fixed {total_smart_quotes} smart quotes")
+        print(f"[+] File repaired successfully!\n")
+    except Exception as e:
+        print(f"[!] Error writing file: {e}")
+        print(f"[*] Restoring from backup...")
+        try:
+            with open(backup_filename, 'r', encoding='utf-8') as f:
+                backup_content = f.read()
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(backup_content)
+            print(f"[+] Restored from backup")
+        except:
+            print(f"[!] Could not restore backup")
+        return False
+    
+    # Make executable
+    try:
+        os.chmod(filename, 0o755)
+        print(f"[+] Made {filename} executable")
+    except Exception as e:
+        print(f"[!] Warning: Could not make executable: {e}")
+        print(f"[*] Run: chmod +x {filename}")
+    
+    print(f"\n[+] ✓ All done! You can now run: ./{filename}")
+    return True
+
+
+def verify_fix(filename):
+    """Verify the file is now valid Python"""
+    
+    print(f"\n[*] Verifying fix...")
+    
+    try:
+        with open(filename, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Try to compile it as Python
+        compile(content, filename, 'exec')
+        print(f"[+] ✓ File is now valid Python!")
+        return True
+    except SyntaxError as e:
+        print(f"[!] Syntax error still present:")
+        print(f"    Line {e.lineno}: {e.msg}")
+        print(f"[*] There may be other issues in the file")
+        return False
+    except Exception as e:
+        print(f"[!] Verification error: {e}")
+        return False
+
+
+def main():
+    """Main function"""
+    
+    # Determine filename
+    if len(sys.argv) > 1:
+        filename = sys.argv[1]
+    else:
+        # Look for PhoneBookLOCA in current directory
+        if os.path.exists('PhoneBookLOCA'):
+            filename = 'PhoneBookLOCA'
+        else:
+            print("\n[!] Usage: python3 fix_quotes.py [filename]")
+            print("[*] Example: python3 fix_quotes.py PhoneBookLOCA")
+            print("\n[*] Or run in the PhoneBookLOCA directory without arguments")
+            sys.exit(1)
+    
+    # Fix quotes
+    success = fix_smart_quotes(filename)
+    
+    if success:
+        # Verify fix
+        verify_fix(filename)
+    else:
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n\n[*] Interrupted")
+        sys.exit(0)
+    except Exception as e:
+        print(f"\n[!] Unexpected error: {e}")
+        sys.exit(1)
