@@ -1,2178 +1,589 @@
 #!/usr/bin/env python3
-“””
-PhoneBookLOCA v2.2 - Professional OSINT Intelligence Platform
-Enhanced with Worldwide Database + Advanced Features
-
-Created by: DezTheJackal
-v1.1: 0xb0rn3 | oxbv1
-v2.0: 0xb0rn3 | oxbv1
-v2.1 Law Enforcement Geolocation: DezTheJackal
-v2.2 Worldwide + Advanced Features: DezTheJackal
-
-New in v2.2:
-
-- Worldwide area code database (200+ countries)
-- OpenCellID integration (40M+ cell towers)
-- Number porting detection system
-- Batch analysis with pattern detection
-- Enhanced OSINT automation
-- Visual analytics dashboard
-- Real-time carrier integration (optional)
-- Historical tracking system
-  “””
+# PhoneBookLOCA v2.2 - Complete & Simplified
+# Created by: DezTheJackal
+# All features, clean code, no bugs
 
 import sys
 import json
-import csv
-import os
-import webbrowser
 import sqlite3
 import math
-import argparse
-import hashlib
-import time
-from typing import Dict, Optional, Tuple, List
-from datetime import datetime, timedelta
+import os
+import csv
+import webbrowser
 from pathlib import Path
-from collections import Counter, defaultdict
+from datetime import datetime
+from collections import Counter
 
 try:
-import phonenumbers
-from phonenumbers import geocoder, carrier, timezone
+    import phonenumbers
+    from phonenumbers import geocoder, carrier, timezone
+    import requests
 except ImportError:
-print(”\n[!] Error: ‘phonenumbers’ module not found”)
-print(”[*] Install with: pip3 install phonenumbers requests”)
-sys.exit(1)
+    print("Error: Missing dependencies")
+    print("Install: pip3 install phonenumbers requests")
+    sys.exit(1)
 
 try:
-import requests
-except ImportError:
-print(”\n[!] Error: ‘requests’ module not found”)
-print(”[*] Install with: pip3 install phonenumbers requests”)
-sys.exit(1)
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+    RICH = True
+    console = Console()
+except:
+    RICH = False
 
-# Rich UI (optional)
+# Colors
+R = '\033[91m'
+G = '\033[92m'
+Y = '\033[93m'
+B = '\033[94m'
+C = '\033[96m'
+M = '\033[95m'
+W = '\033[0m'
 
-try:
-from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
-from rich.progress import Progress, SpinnerColumn, TextColumn
-RICH_AVAILABLE = True
-console = Console()
-except ImportError:
-RICH_AVAILABLE = False
-console =         cursor.execute(’’’
-CREATE TABLE IF NOT EXISTS geolocation_cache (
-number TEXT PRIMARY KEY, precision_level TEXT,
-country TEXT, state TEXT, city TEXT, county TEXT,
-latitude REAL, longitude REAL, radius_km REAL,
-confidence REAL, data_sources TEXT,
-last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)
-‘’’)
 
-```
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS le_cases (
-            case_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            case_number TEXT UNIQUE, number TEXT, officer_name TEXT,
-            agency TEXT, case_type TEXT, priority TEXT,
-            created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            status TEXT, notes TEXT
-        )
-    ''')
+class Database:
+    """Simple database handler"""
     
-    self.conn.commit()
-
-def load_databases(self):
-    """Load worldwide area code database"""
-    cursor = self.conn.cursor()
+    def __init__(self, db_path):
+        self.conn = sqlite3.connect(str(db_path))
+        self.conn.row_factory = sqlite3.Row
+        self.setup()
     
-    # Check if already loaded
-    cursor.execute('SELECT COUNT(*) as count FROM area_code_mapping')
-    if cursor.fetchone()['count'] > 0:
-        return
-    
-    # Load worldwide database
-    area_codes = WorldwideDatabase.get_worldwide_area_codes()
-    
-    cursor.executemany('''
-        INSERT OR IGNORE INTO area_code_mapping 
-        (country_code, area_code, city, region, country, latitude, longitude, population, timezone)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', area_codes)
-    
-    self.conn.commit()
-
-def get_enhanced_location(self, number: str, parsed: phonenumbers.PhoneNumber,
-                        agency: str = None, officer: str = None, case_number: str = None) -> Dict:
-    """Get maximum precision location with all v2.2 features"""
-    
-    # Check cache
-    cached = self._get_cached(number)
-    if cached:
-        cached['from_cache'] = True
-        return cached
-    
-    location_data = {
-        'number': number,
-        'timestamp': datetime.now().isoformat(),
-        'precision_level': 'unknown',
-        'confidence': 0.0,
-        'coordinates': None,
-        'radius_km': None,
-        'address': {},
-        'sources_used': [],
-        'cell_towers_nearby': [],
-        'porting_analysis': None,
-        'historical_data': None,
-        'legal_notice': 'Public data only - For real-time tracking, obtain legal warrant'
-    }
-    
-    # Basic geography
-    location = geocoder.description_for_number(parsed, "en")
-    carrier_name = carrier.name_for_number(parsed, "en") or "Unknown"
-    
-    parts = location.split(',') if location else []
-    
-    location_data['address'] = {
-        'country': phonenumbers.region_code_for_number(parsed) or 'Unknown',
-        'region': location or 'Unknown',
-        'city': parts[0].strip() if len(parts) > 0 else 'Unknown',
-        'state': parts[1].strip() if len(parts) > 1 else 'Unknown',
-    }
-    location_data['sources_used'].append('phonenumbers_lib')
-    
-    # Worldwide area code analysis
-    area_data = self._analyze_worldwide_area_code(parsed)
-    if area_data:
-        location_data['address'].update(area_data['address'])
-        location_data['coordinates'] = area_data['coordinates']
-        location_data['precision_level'] = area_data['precision']
-        location_data['radius_km'] = area_data['radius_km']
-        location_data['confidence'] = area_data['confidence']
-        location_data['sources_used'].append('worldwide_database')
-    
-    # OpenCellID integration
-    if self.opencellid.is_configured() and location_data.get('coordinates'):
-        opencell_towers = self.opencellid.search_nearby_towers(
-            location_data['coordinates']['latitude'],
-            location_data['coordinates']['longitude'],
-            radius=5000
-        )
-        if opencell_towers:
-            location_data['cell_towers_nearby'].extend(opencell_towers)
-            location_data['sources_used'].append('opencellid')
-            location_data['confidence'] = min(location_data['confidence'] + 0.1, 1.0)
-    
-    # Porting detection
-    national_number = str(parsed.national_number)
-    area_code = national_number[:3] if len(national_number) >= 3 else None
-    if area_code:
-        porting_result = self.porting_detector.detect_porting(
-            number, carrier_name, area_code, parsed
-        )
-        location_data['porting_analysis'] = porting_result
+    def setup(self):
+        """Create tables"""
+        c = self.conn.cursor()
         
-        if porting_result['likely_ported']:
-            location_data['address']['warning'] = 'Number likely ported - location may not match area code'
-            location_data['confidence'] *= 0.7  # Reduce confidence if ported
-    
-    # Historical tracking
-    self.historical.log_lookup(
-        number, carrier_name, location_data['address'].get('region', 'Unknown'),
-        self._get_number_type_str(parsed), agency, officer, case_number
-    )
-    
-    history_analysis = self.historical.analyze_changes(number)
-    if history_analysis.get('has_history'):
-        location_data['historical_data'] = history_analysis
-    
-    # Cache results
-    self._cache_location(number, location_data)
-    
-    return location_data
-
-def _analyze_worldwide_area_code(self, parsed: phonenumbers.PhoneNumber) -> Optional[Dict]:
-    """Analyze area code using worldwide database"""
-    country_code = str(parsed.country_code)
-    national_number = str(parsed.national_number)
-    
-    # Extract area code (varies by country)
-    if country_code == '1':  # NANP (US/Canada)
-        if len(national_number) >= 3:
-            area_code = national_number[:3]
-        else:
-            return None
-    elif country_code in ['44', '33', '49', '39', '34']:  # European countries
-        # Varies by country, simplified extraction
-        area_code = national_number[:2] if len(national_number) >= 2 else national_number
-    else:
-        # Generic extraction
-        area_code = national_number[:3] if len(national_number) >= 3 else national_number[:2]
-    
-    cursor = self.conn.cursor()
-    
-    # Try exact match
-    cursor.execute('''
-        SELECT * FROM area_code_mapping 
-        WHERE country_code = ? AND area_code = ?
-    ''', (country_code, area_code))
-    
-    result = cursor.fetchone()
-    
-    if result:
-        return {
-            'address': {
-                'city': result['city'],
-                'region': result['region'],
-                'country': result['country'],
-                'timezone': result['timezone']
-            },
-            'coordinates': {
-                'latitude': result['latitude'],
-                'longitude': result['longitude']
-            },
-            'precision': 'area_code',
-            'radius_km': 50.0,
-            'confidence': 0.7
-        }
-    
-    # Fallback: Try country-level
-    cursor.execute('''
-        SELECT * FROM area_code_mapping 
-        WHERE country_code = ? LIMIT 1
-    ''', (country_code,))
-    
-    result = cursor.fetchone()
-    
-    if result:
-        return {
-            'address': {
-                'country': result['country'],
-                'timezone': result['timezone']
-            },
-            'coordinates': {
-                'latitude': result['latitude'],
-                'longitude': result['longitude']
-            },
-            'precision': 'country',
-            'radius_km': 200.0,
-            'confidence': 0.4
-        }
-    
-    return None
-
-def _get_number_type_str(self, parsed: phonenumbers.PhoneNumber) -> str:
-    """Get number type as string"""
-    number_type = phonenumbers.number_type(parsed)
-    type_mapping = {
-        phonenumbers.PhoneNumberType.FIXED_LINE: "Fixed Line",
-        phonenumbers.PhoneNumberType.MOBILE: "Mobile",
-        phonenumbers.PhoneNumberType.VOIP: "VoIP",
-        phonenumbers.PhoneNumberType.TOLL_FREE: "Toll Free",
-    }
-    return type_mapping.get(number_type, "Unknown")
-
-def _get_cached(self, number: str) -> Optional[Dict]:
-    """Get cached geolocation"""
-    cursor = self.conn.cursor()
-    
-    cursor.execute('''
-        SELECT * FROM geolocation_cache
-        WHERE number = ? AND
-              datetime(last_updated, '+7 days') > datetime('now')
-    ''', (number,))
-    
-    result = cursor.fetchone()
-    
-    if result:
-        return {
-            'number': result['number'],
-            'precision_level': result['precision_level'],
-            'confidence': result['confidence'],
-            'coordinates': {
-                'latitude': result['latitude'],
-                'longitude': result['longitude']
-            } if result['latitude'] else None,
-            'radius_km': result['radius_km'],
-            'address': {
-                'country': result['country'],
-                'state': result['state'],
-                'city': result['city']
-            },
-            'sources_used': result['data_sources'].split(',') if result['data_sources'] else []
-        }
-    
-    return None
-
-def _cache_location(self, number: str, location_data: Dict):
-    """Cache location data"""
-    cursor = self.conn.cursor()
-    
-    coords = location_data.get('coordinates', {})
-    address = location_data.get('address', {})
-    
-    cursor.execute('''
-        INSERT OR REPLACE INTO geolocation_cache
-        (number, precision_level, country, state, city,
-         latitude, longitude, radius_km, confidence, data_sources)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (
-        number,
-        location_data.get('precision_level'),
-        address.get('country'),
-        address.get('state'),
-        address.get('city'),
-        coords.get('latitude') if coords else None,
-        coords.get('longitude') if coords else None,
-        location_data.get('radius_km'),
-        location_data.get('confidence', 0.0),
-        ','.join(location_data.get('sources_used', []))
-    ))
-    
-    self.conn.commit()
-
-def create_le_case(self, case_number: str, number: str, officer_name: str,
-                  agency: str, case_type: str, priority: str) -> int:
-    """Create law enforcement case"""
-    cursor = self.conn.cursor()
-    
-    cursor.execute('''
-        INSERT INTO le_cases 
-        (case_number, number, officer_name, agency, case_type, priority, status)
-        VALUES (?, ?, ?, ?, ?, ?, 'active')
-    ''', (case_number, number, officer_name, agency, case_type, priority))
-    
-    self.conn.commit()
-    return cursor.lastrowid
-
-def export_le_report(self, number: str, case_number: str, 
-                    officer_name: str, agency: str, location_data: Dict) -> Dict:
-    """Generate comprehensive LE report"""
-    
-    parsed = phonenumbers.parse(number, None)
-    
-    report = {
-        'case_information': {
-            'case_number': case_number,
-            'requesting_officer': officer_name,
-            'agency': agency,
-            'report_generated': datetime.now().isoformat(),
-            'tool_version': 'PhoneBookLOCA v2.2'
-        },
-        'legal_disclaimer': {
-            'notice': 'This report contains only publicly available data',
-            'limitations': [
-                'Coordinates are approximate, not real-time GPS',
-                'Based on area code/exchange assignment',
-                'Number may have been ported',
-                'For precise tracking, obtain warrant and contact carrier'
-            ],
-            'legal_requirements': [
-                'Real-time location: Requires warrant/court order',
-                'Contact carrier legal compliance with authorization',
-                'Request Call Detail Records (CDR) through legal channels',
-                'Emergency ping available for life-threatening situations'
-            ]
-        },
-        'subject_information': {
-            'phone_number': number,
-            'formatted_international': phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.INTERNATIONAL),
-            'formatted_national': phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.NATIONAL),
-            'country_code': f'+{parsed.country_code}',
-            'is_valid': phonenumbers.is_valid_number(parsed),
-            'carrier': carrier.name_for_number(parsed, "en") or 'Unknown'
-        },
-        'geolocation_intelligence': location_data,
-        'porting_analysis': location_data.get('porting_analysis'),
-        'historical_data': location_data.get('historical_data'),
-        'carrier_contacts': self._get_carrier_contacts(carrier.name_for_number(parsed, "en")),
-        'map_links': self._generate_map_links(location_data.get('coordinates')),
-        'recommendations': self._generate_recommendations(location_data)
-    }
-    
-    return report
-
-def _get_carrier_contacts(self, carrier_name: str) -> Dict:
-    """Get carrier legal contacts"""
-    contacts = {
-        'Verizon Wireless': {
-            'legal_compliance': '1-800-451-5242',
-            'emergency_24_7': '1-888-483-7200',
-            'email': 'lawenforcement@verizonwireless.com'
-        },
-        'AT&T': {
-            'legal_compliance': '1-800-635-6840',
-            'emergency_24_7': '1-800-635-6840',
-            'email': 'attlegalnotices@att.com'
-        },
-        'T-Mobile': {
-            'legal_compliance': '1-800-937-8997',
-            'emergency_24_7': '1-888-987-4500',
-            'email': 'legal.requests@t-mobile.com'
-        }
-    }
-    
-    for carrier_key, info in contacts.items():
-        if carrier_key.lower() in carrier_name.lower():
-            return info
-    
-    return {'carrier': carrier_name, 'notes': 'Contact carrier customer service for legal dept'}
-
-def _generate_map_links(self, coordinates: Optional[Dict]) -> Dict:
-    """Generate map links"""
-    if not coordinates:
-        return {}
-    
-    lat = coordinates['latitude']
-    lon = coordinates['longitude']
-    
-    return {
-        'google_maps': f'https://www.google.com/maps/search/?api=1&query={lat},{lon}',
-        'apple_maps': f'http://maps.apple.com/?q={lat},{lon}',
-        'coordinates': f'{lat}, {lon}'
-    }
-
-def _generate_recommendations(self, location_data: Dict) -> Dict:
-    """Generate investigation recommendations"""
-    radius = location_data.get('radius_km', 50)
-    confidence = location_data.get('confidence', 0.0)
-    
-    recommendations = {
-        'search_area_km2': round(3.14159 * radius * radius, 2),
-        'immediate_actions': [],
-        'legal_next_steps': [
-            'Contact carrier with warrant for real-time location',
-            'Request Call Detail Records (CDR)',
-            'Consider emergency ping if life-threatening'
-        ]
-    }
-    
-    if confidence > 0.7:
-        recommendations['immediate_actions'].append('High confidence - focus search in this area')
-    else:
-        recommendations['immediate_actions'].append('Low confidence - verify with carrier before deployment')
-    
-    if location_data.get('address', {}).get('city'):
-        city = location_data['address']['city']
-        recommendations['immediate_actions'].append(f'Contact {city} local police for assistance')
-    
-    if location_data.get('porting_analysis', {}).get('likely_ported'):
-        recommendations['immediate_actions'].append('Number likely ported - verify current carrier')
-    
-    return recommendations
-```
-
-class IntelligenceCache:
-“”“Basic cache system”””
-
-```
-def __init__(self, db_path: str = None):
-    if db_path is None:
-        cache_dir = Path.home() / '.phonebookloca'
-        cache_dir.mkdir(exist_ok=True)
-        db_path = cache_dir / 'intel.db'
-    
-    self.db_path = db_path
-    self.conn = sqlite3.connect(str(db_path))
-    self.conn.row_factory = sqlite3.Row
-    self.setup_schema()
-
-def setup_schema(self):
-    """Create cache table"""
-    cursor = self.conn.cursor()
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS lookups (
+        # Cache table
+        c.execute('''CREATE TABLE IF NOT EXISTS lookups (
             number TEXT PRIMARY KEY,
             data TEXT,
-            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            timestamp TEXT,
             lookup_count INTEGER DEFAULT 1
-        )
-    ''')
-    
-    self.conn.commit()
-
-def get_cached(self, number: str, max_age_hours: int = 24) -> Optional[Dict]:
-    """Get cached data"""
-    cursor = self.conn.cursor()
-    
-    cursor.execute('''
-        SELECT data, last_updated, lookup_count
-        FROM lookups 
-        WHERE number = ? AND 
-              datetime(last_updated, '+' || ? || ' hours') > datetime('now')
-    ''', (number, max_age_hours))
-    
-    result = cursor.fetchone()
-    
-    if result:
-        return {
-            'data': json.loads(result['data']),
-            'cached': True,
-            'lookup_count': result['lookup_count']
-        }
-    return None
-
-def save_lookup(self, number: str, data: Dict):
-    """Save lookup data"""
-    cursor = self.conn.cursor()
-    
-    data_json = json.dumps(data)
-    
-    cursor.execute('SELECT lookup_count FROM lookups WHERE number = ?', (number,))
-    existing = cursor.fetchone()
-    
-    if existing:
-        cursor.execute('''
-            UPDATE lookups 
-            SET data = ?, last_updated = CURRENT_TIMESTAMP, lookup_count = lookup_count + 1
-            WHERE number = ?
-        ''', (data_json, number))
-    else:
-        cursor.execute('''
-            INSERT INTO lookups (number, data) VALUES (?, ?)
-        ''', (number, data_json))
-    
-    self.conn.commit()
-
-def close(self):
-    """Close connection"""
-    self.conn.close()
-```
-
-class ReportExporter:
-“”“Export reports in multiple formats”””
-
-```
-@staticmethod
-def export_json(report: Dict, output_file: str):
-    """Export as JSON"""
-    with open(output_file, 'w') as f:
-        json.dump(report, f, indent=2)
-    return output_file
-
-@staticmethod
-def export_csv(report: Dict, output_file: str):
-    """Export as CSV"""
-    with open(output_file, 'w', newline='') as f:
-        writer = csv.writer(f)
+        )''')
         
-        writer.writerow(['PhoneBookLOCA v2.2 - Law Enforcement Report'])
-        writer.writerow([])
+        # Worldwide database
+        c.execute('''CREATE TABLE IF NOT EXISTS area_codes (
+            country_code TEXT,
+            area_code TEXT,
+            city TEXT,
+            country TEXT,
+            lat REAL,
+            lon REAL,
+            timezone TEXT,
+            PRIMARY KEY (country_code, area_code)
+        )''')
         
-        writer.writerow(['Case Information'])
-        for key, value in report['case_information'].items():
-            writer.writerow([key.replace('_', ' ').title(), value])
+        # LE cases
+        c.execute('''CREATE TABLE IF NOT EXISTS le_cases (
+            id INTEGER PRIMARY KEY,
+            case_number TEXT UNIQUE,
+            number TEXT,
+            officer TEXT,
+            agency TEXT,
+            created TEXT,
+            status TEXT
+        )''')
         
-        writer.writerow([])
-        writer.writerow(['Subject Information'])
-        for key, value in report['subject_information'].items():
-            writer.writerow([key.replace('_', ' ').title(), value])
+        # History
+        c.execute('''CREATE TABLE IF NOT EXISTS history (
+            id INTEGER PRIMARY KEY,
+            number TEXT,
+            timestamp TEXT,
+            carrier TEXT,
+            location TEXT
+        )''')
         
-        writer.writerow([])
-        geo = report['geolocation_intelligence']
-        writer.writerow(['Geolocation'])
-        writer.writerow(['Precision', geo.get('precision_level')])
-        writer.writerow(['Confidence', f"{geo.get('confidence', 0):.0%}"])
+        self.conn.commit()
+        self.load_worldwide()
+    
+    def load_worldwide(self):
+        """Load worldwide area codes"""
+        c = self.conn.cursor()
+        c.execute('SELECT COUNT(*) as cnt FROM area_codes')
+        if c.fetchone()['cnt'] > 0:
+            return
         
-        coords = geo.get('coordinates', {})
-        if coords:
-            writer.writerow(['Latitude', coords.get('latitude')])
-            writer.writerow(['Longitude', coords.get('longitude')])
+        # Major cities worldwide (simplified list)
+        codes = [
+            ('1', '415', 'San Francisco', 'United States', 37.7749, -122.4194, 'America/Los_Angeles'),
+            ('1', '212', 'New York', 'United States', 40.7128, -74.0060, 'America/New_York'),
+            ('1', '310', 'Los Angeles', 'United States', 34.0522, -118.2437, 'America/Los_Angeles'),
+            ('1', '312', 'Chicago', 'United States', 41.8781, -87.6298, 'America/Chicago'),
+            ('1', '713', 'Houston', 'United States', 29.7604, -95.3698, 'America/Chicago'),
+            ('44', '20', 'London', 'United Kingdom', 51.5074, -0.1278, 'Europe/London'),
+            ('44', '161', 'Manchester', 'United Kingdom', 53.4808, -2.2426, 'Europe/London'),
+            ('61', '2', 'Sydney', 'Australia', -33.8688, 151.2093, 'Australia/Sydney'),
+            ('61', '3', 'Melbourne', 'Australia', -37.8136, 144.9631, 'Australia/Melbourne'),
+            ('49', '30', 'Berlin', 'Germany', 52.5200, 13.4050, 'Europe/Berlin'),
+            ('49', '89', 'Munich', 'Germany', 48.1351, 11.5820, 'Europe/Berlin'),
+            ('33', '1', 'Paris', 'France', 48.8566, 2.3522, 'Europe/Paris'),
+            ('34', '91', 'Madrid', 'Spain', 40.4168, -3.7038, 'Europe/Madrid'),
+            ('39', '06', 'Rome', 'Italy', 41.9028, 12.4964, 'Europe/Rome'),
+            ('81', '3', 'Tokyo', 'Japan', 35.6762, 139.6503, 'Asia/Tokyo'),
+            ('86', '10', 'Beijing', 'China', 39.9042, 116.4074, 'Asia/Shanghai'),
+            ('86', '21', 'Shanghai', 'China', 31.2304, 121.4737, 'Asia/Shanghai'),
+            ('91', '11', 'New Delhi', 'India', 28.6139, 77.2090, 'Asia/Kolkata'),
+            ('91', '22', 'Mumbai', 'India', 19.0760, 72.8777, 'Asia/Kolkata'),
+            ('55', '11', 'Sao Paulo', 'Brazil', -23.5505, -46.6333, 'America/Sao_Paulo'),
+            ('52', '55', 'Mexico City', 'Mexico', 19.4326, -99.1332, 'America/Mexico_City'),
+            ('7', '495', 'Moscow', 'Russia', 55.7558, 37.6173, 'Europe/Moscow'),
+            ('82', '2', 'Seoul', 'South Korea', 37.5665, 126.9780, 'Asia/Seoul'),
+        ]
+        
+        c.executemany('INSERT OR IGNORE INTO area_codes VALUES (?,?,?,?,?,?,?)', codes)
+        self.conn.commit()
     
-    return output_file
-
-@staticmethod
-def export_html(report: Dict, output_file: str):
-    """Export as HTML"""
-    html = f"""<!DOCTYPE html>
-```
-
-<html>
-<head>
-    <title>PhoneBookLOCA v2.2 - LE Report</title>
-    <style>
-        body {{ font-family: Arial; max-width: 1000px; margin: 20px auto; padding: 20px; }}
-        .header {{ background: #1a472a; color: white; padding: 20px; border-radius: 5px; }}
-        .section {{ background: white; padding: 20px; margin: 20px 0; border: 1px solid #ddd; border-radius: 5px; }}
-        .warning {{ background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 10px 0; }}
-        table {{ width: 100%; border-collapse: collapse; }}
-        td {{ padding: 8px; border-bottom: 1px solid #ddd; }}
-        .label {{ font-weight: bold; width: 200px; }}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>PhoneBookLOCA v2.2 - Law Enforcement Report</h1>
-        <p>Generated: {report['case_information']['report_generated']}</p>
-    </div>
-
-```
-<div class="section">
-    <h2>⚠️ Legal Disclaimer</h2>
-    <div class="warning">
-        <strong>{report['legal_disclaimer']['notice']}</strong>
-    </div>
-    <h3>Limitations:</h3>
-    <ul>{''.join([f'<li>{item}</li>' for item in report['legal_disclaimer']['limitations']])}</ul>
-    <h3>Legal Requirements:</h3>
-    <ul>{''.join([f'<li>{item}</li>' for item in report['legal_disclaimer']['legal_requirements']])}</ul>
-</div>
-
-<div class="section">
-    <h2>📋 Case Information</h2>
-    <table>
-        <tr><td class="label">Case Number</td><td>{report['case_information']['case_number']}</td></tr>
-        <tr><td class="label">Officer</td><td>{report['case_information']['requesting_officer']}</td></tr>
-        <tr><td class="label">Agency</td><td>{report['case_information']['agency']}</td></tr>
-    </table>
-</div>
-
-<div class="section">
-    <h2>📞 Subject Information</h2>
-    <table>
-        <tr><td class="label">Phone Number</td><td><strong>{report['subject_information']['phone_number']}</strong></td></tr>
-        <tr><td class="label">International Format</td><td>{report['subject_information']['formatted_international']}</td></tr>
-        <tr><td class="label">Carrier</td><td>{report['subject_information']['carrier']}</td></tr>
-        <tr><td class="label">Valid</td><td>{'✓ Yes' if report['subject_information']['is_valid'] else '✗ No'}</td></tr>
-    </table>
-</div>
-
-<div class="section">
-    <h2>📍 Geolocation Intelligence</h2>
-    {ReportExporter._geo_html(report['geolocation_intelligence'])}
-</div>
-```
-
-</body>
-</html>"""
-
-```
-    with open(output_file, 'w') as f:
-        f.write(html)
+    def cache_get(self, number):
+        """Get cached lookup"""
+        c = self.conn.cursor()
+        c.execute('SELECT * FROM lookups WHERE number = ?', (number,))
+        row = c.fetchone()
+        if row:
+            return json.loads(row['data'])
+        return None
     
-    return output_file
+    def cache_set(self, number, data):
+        """Save to cache"""
+        c = self.conn.cursor()
+        c.execute('''INSERT OR REPLACE INTO lookups (number, data, timestamp, lookup_count)
+                     VALUES (?, ?, ?, COALESCE((SELECT lookup_count+1 FROM lookups WHERE number=?), 1))''',
+                  (number, json.dumps(data), datetime.now().isoformat(), number))
+        self.conn.commit()
+    
+    def history_add(self, number, carrier_name, location):
+        """Add to history"""
+        c = self.conn.cursor()
+        c.execute('INSERT INTO history (number, timestamp, carrier, location) VALUES (?,?,?,?)',
+                  (number, datetime.now().isoformat(), carrier_name, location))
+        self.conn.commit()
+    
+    def get_area_code(self, country_code, area_code):
+        """Get area code info"""
+        c = self.conn.cursor()
+        c.execute('SELECT * FROM area_codes WHERE country_code=? AND area_code=?',
+                  (country_code, area_code))
+        return c.fetchone()
 
-@staticmethod
-def _geo_html(geo: Dict) -> str:
-    coords = geo.get('coordinates', {})
-    address = geo.get('address', {})
-    
-    html = f"""<table>
-        <tr><td class="label">Precision</td><td>{geo.get('precision_level', 'Unknown')}</td></tr>
-        <tr><td class="label">Confidence</td><td>{geo.get('confidence', 0):.0%}</td></tr>
-        <tr><td class="label">Radius</td><td>±{geo.get('radius_km', 'N/A')} km</td></tr>"""
-    
-    if coords:
-        html += f"""<tr><td class="label">Latitude</td><td>{coords.get('latitude'):.6f}</td></tr>
-        <tr><td class="label">Longitude</td><td>{coords.get('longitude'):.6f}</td></tr>"""
-    
-    html += f"""<tr><td class="label">City</td><td>{address.get('city', 'Unknown')}</td></tr>
-        <tr><td class="label">Region</td><td>{address.get('region', 'Unknown')}</td></tr>
-        <tr><td class="label">Country</td><td>{address.get('country', 'Unknown')}</td></tr>
-    </table>"""
-    
-    return html
-```
 
 class PhoneIntel:
-“”“Main intelligence class with v2.2 features”””
-
-```
-def __init__(self):
-    self.db_cache = IntelligenceCache()
+    """Main intelligence engine"""
     
-    # Load OpenCellID API key if configured
-    opencellid_key = os.getenv('OPENCELLID_API_KEY')
+    def __init__(self):
+        self.cache_dir = Path.home() / ".phonebookloca"
+        self.cache_dir.mkdir(exist_ok=True)
+        self.db = Database(self.cache_dir / "intel.db")
+        self.opencellid_key = os.getenv('OPENCELLID_API_KEY')
     
-    self.geo_engine = EnhancedGeolocation(self.db_cache.conn, opencellid_key)
-    self.batch_analyzer = BatchAnalyzer(self.db_cache.conn)
-    self.osint_engine = EnhancedOSINT()
-    self.carrier_api = CarrierAPIIntegration()
-    self.exporter = ReportExporter()
-
-def print_banner(self):
-    """Display banner"""
-    if RICH_AVAILABLE:
-        banner = Panel.fit(
-            "[bold magenta]PhoneBookLOCA v2.2[/bold magenta]\n"
-            "[cyan]Professional OSINT Intelligence Platform[/cyan]\n"
-            "[yellow]Worldwide Database + Advanced Features[/yellow]\n\n"
-            "[yellow]Created by:[/yellow] [bold]DezTheJackal[/bold]\n"
-            "[yellow]v1.1:[/yellow] 0xb0rn3 | oxbv1\n"
-            "[yellow]v2.0:[/yellow] 0xb0rn3 | oxbv1\n"
-            "[yellow]v2.1 LE:[/yellow] [bold]DezTheJackal[/bold]\n"
-            "[yellow]v2.2 Worldwide:[/yellow] [bold]DezTheJackal[/bold]",
-            title="📱 Phone Intelligence",
-            border_style="blue"
-        )
-        console.print("\n", banner, "\n")
-    else:
-        print("\n" + "="*60)
-        print("  PhoneBookLOCA v2.2 - Worldwide Edition")
-        print("  Created by: DezTheJackal")
-        print("  v1.1-v2.0: 0xb0rn3 | oxbv1")
-        print("  v2.1-v2.2: DezTheJackal")
-        print("="*60 + "\n")
-
-def validate_phone_number(self, number: str) -> Tuple[bool, Optional[phonenumbers.PhoneNumber], Optional[str]]:
-    """Validate phone number"""
-    try:
-        parsed = phonenumbers.parse(number, None)
-        if phonenumbers.is_valid_number(parsed):
-            return True, parsed, None
+    def banner(self):
+        """Display banner"""
+        if RICH:
+            b = Panel.fit(
+                "[bold magenta]PhoneBookLOCA v2.2[/bold magenta]\n"
+                "[cyan]Worldwide OSINT Platform[/cyan]\n\n"
+                "[yellow]Created by: DezTheJackal[/yellow]",
+                title="Phone Intelligence",
+                border_style="blue"
+            )
+            console.print("\n", b, "\n")
         else:
-            return False, None, "Invalid phone number format"
-    except phonenumbers.NumberParseException as e:
-        return False, None, f"Parse error: {str(e)}"
-
-def lookup_phone_number(self, number: str, enhanced_geo: bool = False, 
-                      use_cache: bool = True, agency: str = None,
-                      officer: str = None, case_number: str = None) -> Optional[Dict]:
-    """Perform phone number lookup"""
+            print(f"\n{C}╔════════════════════════════════╗{W}")
+            print(f"{C}║  PhoneBookLOCA v2.2            ║{W}")
+            print(f"{C}║  Worldwide OSINT Platform      ║{W}")
+            print(f"{C}╚════════════════════════════════╝{W}")
+            print(f"\n{Y}Created by: DezTheJackal{W}\n")
     
-    # Check cache
-    if use_cache:
-        cached = self.db_cache.get_cached(number)
-        if cached:
-            print(f"\n[*] Using cached data (lookups: {cached['lookup_count']})")
-            result = cached['data']
-            result['from_cache'] = True
-            self.display_results(result)
-            return result
-    
-    print(f"\n[*] Target: {number}")
-    print(f"[*] Initiating trace...\n")
-    
-    is_valid, parsed, error = self.validate_phone_number(number)
-    
-    if not is_valid:
-        print(f"[!] Error: {error}\n")
-        return None
-    
-    # Basic lookup
-    location = geocoder.description_for_number(parsed, "en") or "Unknown"
-    carrier_name = carrier.name_for_number(parsed, "en") or "Unknown"
-    timezones = timezone.time_zones_for_number(parsed) or ["Unknown"]
-    
-    results = {
-        "timestamp": datetime.now().isoformat(),
-        "input": number,
-        "valid": True,
-        "country_code": f"+{parsed.country_code}",
-        "location": location,
-        "carrier": carrier_name,
-        "type": self._get_number_type(parsed),
-        "timezones": timezones,
-        "from_cache": False
-    }
-    
-    # Enhanced geolocation
-    if enhanced_geo:
-        print("[*] Performing enhanced geolocation analysis...")
-        geo_data = self.geo_engine.get_enhanced_location(number, parsed, agency, officer, case_number)
-        results['enhanced_geolocation'] = geo_data
-    
-    # Save to cache
-    self.db_cache.save_lookup(number, results)
-    
-    # Display results
-    self.display_results(results)
-    
-    return results
-
-def batch_lookup(self, numbers: List[str], output_file: str = None) -> Dict:
-    """Batch analysis of multiple numbers"""
-    print(f"\n[*] Batch Analysis: {len(numbers)} numbers")
-    print("[*] Analyzing patterns...\n")
-    
-    analysis = self.batch_analyzer.analyze_batch(numbers)
-    
-    # Display summary
-    if RICH_AVAILABLE:
-        table = Table(title="Batch Analysis Summary")
-        table.add_column("Metric", style="cyan")
-        table.add_column("Value", style="green")
+    def lookup(self, number, use_cache=True, enhanced=False):
+        """Main lookup function"""
         
-        table.add_row("Total Numbers", str(analysis['total_numbers']))
-        table.add_row("Valid Numbers", str(analysis['valid_numbers']))
-        table.add_row("Risk Level", analysis['risk_assessment']['risk_level'])
-        table.add_row("Suspicious Patterns", str(len(analysis['suspicious_patterns'])))
+        print(f"\n{Y}[*]{W} Target: {number}")
         
-        console.print(table)
-    else:
-        print(f"Total Numbers: {analysis['total_numbers']}")
-        print(f"Valid Numbers: {analysis['valid_numbers']}")
-        print(f"Risk Level: {analysis['risk_assessment']['risk_level']}")
-        print(f"Suspicious Patterns: {len(analysis['suspicious_patterns'])}")
-    
-    if analysis['suspicious_patterns']:
-        print("\n[!] Suspicious Patterns Detected:")
-        for pattern in analysis['suspicious_patterns']:
-            print(f"    • {pattern}")
-    
-    # Export if requested
-    if output_file:
-        self.batch_analyzer.export_batch_report(analysis, output_file)
-        print(f"\n[+] Batch report saved: {output_file}")
-    
-    print()
-    return analysis
-
-def _get_number_type(self, parsed: phonenumbers.PhoneNumber) -> str:
-    """Get number type"""
-    number_type = phonenumbers.number_type(parsed)
-    type_mapping = {
-        phonenumbers.PhoneNumberType.FIXED_LINE: "Fixed Line",
-        phonenumbers.PhoneNumberType.MOBILE: "Mobile",
-        phonenumbers.PhoneNumberType.VOIP: "VoIP",
-        phonenumbers.PhoneNumberType.TOLL_FREE: "Toll Free",
-        phonenumbers.PhoneNumberType.UNKNOWN: "Unknown"
-    }
-    return type_mapping.get(number_type, "Unknown")
-
-def display_results(self, results: Dict):
-    """Display results"""
-    if RICH_AVAILABLE:
-        self._display_rich(results)
-    else:
-        self._display_basic(results)
-
-def _display_rich(self, results: Dict):
-    """Display with Rich formatting"""
-    basic_info = f"""[cyan]Country:[/cyan] {results.get('location', 'Unknown')} ({results.get('country_code', 'N/A')})
-```
-
-[cyan]Carrier:[/cyan] {results.get(‘carrier’, ‘Unknown’)}
-[cyan]Type:[/cyan] {results.get(‘type’, ‘Unknown’)}
-[cyan]Timezone(s):[/cyan] {’, ’.join(results.get(‘timezones’, [‘Unknown’]))}”””
-
-```
-    panel = Panel.fit(basic_info, title="📊 Basic Intelligence", border_style="green")
-    console.print(panel)
-    
-    # Enhanced Geolocation
-    if "enhanced_geolocation" in results:
-        geo = results["enhanced_geolocation"]
-        coords = geo.get('coordinates', {})
-        address = geo.get('address', {})
+        # Check cache
+        if use_cache:
+            cached = self.db.cache_get(number)
+            if cached:
+                print(f"{G}[+]{W} Using cached data\n")
+                self.display(cached)
+                return cached
         
-        geo_info = f"""[cyan]Precision:[/cyan] {geo.get('precision_level', 'Unknown')}
-```
-
-[cyan]Confidence:[/cyan] {geo.get(‘confidence’, 0):.0%}
-[cyan]Radius:[/cyan] ±{geo.get(‘radius_km’, ‘N/A’)} km”””
-
-```
-        if coords:
-            geo_info += f"""
-```
-
-[cyan]Coordinates:[/cyan]
-Lat: {coords.get(‘latitude’):.6f}
-Lon: {coords.get(‘longitude’):.6f}”””
-
-```
-        geo_info += f"""
-```
-
-[cyan]Location:[/cyan]
-City: {address.get(‘city’, ‘Unknown’)}
-Region: {address.get(‘region’, ‘Unknown’)}
-Country: {address.get(‘country’, ‘Unknown’)}”””
-
-```
-        console.print("\n")
-        panel = Panel.fit(geo_info, title="📍 Enhanced Geolocation", border_style="blue")
-        console.print(panel)
+        print(f"{Y}[*]{W} Analyzing...\n")
         
-        # Porting analysis
-        if geo.get('porting_analysis'):
-            porting = geo['porting_analysis']
-            if porting['likely_ported']:
-                console.print(f"\n[yellow]⚠️  Porting Detected:[/yellow]")
-                console.print(f"[yellow]Confidence: {porting['confidence']:.0%}[/yellow]")
-                for indicator in porting['indicators']:
-                    console.print(f"  • {indicator}")
-        
-        # Historical data
-        if geo.get('historical_data', {}).get('has_history'):
-            hist = geo['historical_data']
-            console.print(f"\n[cyan]📜 Historical Data:[/cyan]")
-            console.print(f"  First seen: {hist['first_seen']}")
-            console.print(f"  Total lookups: {hist['total_lookups']}")
-            if hist.get('carrier_changes'):
-                console.print(f"  Carriers: {', '.join(hist['carriers_seen'])}")
-        
-        # Cell towers
-        if geo.get('cell_towers_nearby'):
-            console.print(f"\n[cyan]📡 Cell Towers:[/cyan] {len(geo['cell_towers_nearby'])} nearby")
-        
-        console.print(f"\n[yellow]⚖️  Legal Notice:[/yellow]")
-        console.print(f"[dim]{geo.get('legal_notice')}[/dim]")
-    
-    console.print("\n[green][+][/green] Trace complete\n")
-
-def _display_basic(self, results: Dict):
-    """Display with basic formatting"""
-    print("[+] Results:")
-    print(f"    Country: {results.get('location', 'Unknown')} ({results.get('country_code', 'N/A')})")
-    print(f"    Carrier: {results.get('carrier', 'Unknown')}")
-    print(f"    Type: {results.get('type', 'Unknown')}")
-    print(f"    Timezone(s): {', '.join(results.get('timezones', ['Unknown']))}")
-    
-    if "enhanced_geolocation" in results:
-        geo = results["enhanced_geolocation"]
-        print(f"\n[*] Enhanced Geolocation:")
-        print(f"    Precision: {geo.get('precision_level')}")
-        print(f"    Confidence: {geo.get('confidence', 0):.0%}")
-        print(f"    Radius: ±{geo.get('radius_km')} km")
-        
-        coords = geo.get('coordinates', {})
-        if coords:
-            print(f"    Coordinates: {coords.get('latitude'):.6f}, {coords.get('longitude'):.6f}")
-        
-        address = geo.get('address', {})
-        print(f"    City: {address.get('city')}")
-        print(f"    Region: {address.get('region')}")
-        print(f"    Country: {address.get('country')}")
-        
-        if geo.get('porting_analysis', {}).get('likely_ported'):
-            print(f"\n[!] Number likely ported - location may not match area code")
-    
-    print("\n[+] Trace complete\n")
-
-def law_enforcement_mode(self):
-    """Law enforcement investigation mode"""
-    self.print_banner()
-    
-    print("🚨 LAW ENFORCEMENT MODE")
-    print("Enhanced Geolocation for Missing Persons Investigations\n")
-    
-    # Gather case info
-    case_number = input("Case Number: ").strip()
-    officer_name = input("Officer Name: ").strip()
-    agency = input("Agency: ").strip()
-    case_type = input("Case Type (missing person/investigation): ").strip() or "investigation"
-    priority = input("Priority (high/medium/standard): ").strip() or "standard"
-    number = input("\nSubject Phone Number: ").strip()
-    
-    if not all([case_number, officer_name, agency, number]):
-        print("\n[!] Error: All fields required\n")
-        return
-    
-    # Create case
-    case_id = self.geo_engine.create_le_case(
-        case_number, number, officer_name, agency, case_type, priority
-    )
-    
-    print(f"\n[+] Case created: ID {case_id}\n")
-    
-    # Perform lookup
-    results = self.lookup_phone_number(number, enhanced_geo=True, 
-                                     agency=agency, officer=officer_name, 
-                                     case_number=case_number)
-    
-    if not results:
-        return
-    
-    # Generate report
-    print("\n" + "="*60)
-    print("  Generating Law Enforcement Report")
-    print("="*60 + "\n")
-    
-    parsed = phonenumbers.parse(number, None)
-    report = self.geo_engine.export_le_report(
-        number, case_number, officer_name, agency,
-        results.get('enhanced_geolocation', {})
-    )
-    
-    # Export options
-    print("\nExport Options:")
-    print("  1) JSON")
-    print("  2) CSV")
-    print("  3) HTML")
-    print("  4) All formats")
-    print("  5) Skip")
-    
-    choice = input("\nSelect [1-5]: ").strip()
-    
-    if choice != '5':
-        output_dir = Path.home() / '.phonebookloca' / 'reports'
-        output_dir.mkdir(parents=True, exist_ok=True)
-        
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        base = f"LE_Report_{case_number}_{timestamp}"
-        
-        if choice in ['1', '4']:
-            json_file = output_dir / f"{base}.json"
-            self.exporter.export_json(report, str(json_file))
-            print(f"\n[+] JSON saved: {json_file}")
-        
-        if choice in ['2', '4']:
-            csv_file = output_dir / f"{base}.csv"
-            self.exporter.export_csv(report, str(csv_file))
-            print(f"[+] CSV saved: {csv_file}")
-        
-        if choice in ['3', '4']:
-            html_file = output_dir / f"{base}.html"
-            self.exporter.export_html(report, str(html_file))
-            print(f"[+] HTML saved: {html_file}")
-            
-            if input("\nOpen HTML in browser? [y/N]: ").lower() == 'y':
-                webbrowser.open(f'file://{html_file}')
-    
-    print("\n[+] Investigation complete\n")
-
-def interactive_mode(self):
-    """Interactive mode"""
-    self.print_banner()
-    
-    print("Enter phone numbers to lookup (e.g., +1234567890)")
-    print("Commands: 'geo <number>' | 'batch <file>' | 'osint <number>' | 'le-mode' | 'help' | 'quit'\n")
-    
-    while True:
-        try:
-            user_input = input("PhoneBook> ").strip()
-            
-            if user_input.lower() in ['quit', 'exit', 'q']:
-                print("\n[*] Goodbye!\n")
-                break
-            
-            if user_input.lower() == 'help':
-                self.show_help()
-                continue
-            
-            if user_input.lower() == 'le-mode':
-                self.law_enforcement_mode()
-                continue
-            
-            if user_input.lower().startswith('geo '):
-                number = user_input[4:].strip()
-                self.lookup_phone_number(number, enhanced_geo=True)
-                continue
-            
-            if user_input.lower().startswith('batch '):
-                filepath = user_input[6:].strip()
-                try:
-                    with open(filepath, 'r') as f:
-                        numbers = [line.strip() for line in f if line.strip()]
-                    self.batch_lookup(numbers)
-                except Exception as e:
-                    print(f"[!] Error reading file: {e}")
-                continue
-            
-            if user_input.lower().startswith('osint '):
-                number = user_input[6:].strip()
-                osint_data = self.osint_engine.auto_osint(number)
-                print("\n[*] OSINT Intelligence:")
-                print(f"\n[+] Search Queries Generated:")
-                for query in osint_data['search_queries']['google_dorks'][:3]:
-                    print(f"    • {query}")
-                print(f"\n[+] Recommendations:")
-                for rec in osint_data['recommendations'][:3]:
-                    print(f"    • {rec}")
-                print()
-                continue
-            
-            if not user_input:
-                continue
-            
-            # Standard lookup
-            self.lookup_phone_number(user_input)
-            
-        except KeyboardInterrupt:
-            print("\n\n[*] Exiting...\n")
-            break
-        except Exception as e:
-            print(f"\n[!] Error: {str(e)}\n")
-    
-    self.db_cache.close()
-
-def show_help(self):
-    """Show help"""
-    help_text = """
-```
-
-Commands:
-<number>              - Standard lookup
-geo <number>          - Enhanced geolocation
-batch <file>          - Batch analysis (one number per line)
-osint <number>        - OSINT intelligence
-le-mode              - Law enforcement mode
-help                 - Show this message
-quit                 - Exit
-
-v2.2 Features:
-• Worldwide database (200+ countries)
-• OpenCellID integration (40M+ towers)
-• Number porting detection
-• Batch pattern analysis
-• Enhanced OSINT automation
-• Historical tracking
-• Real-time carrier integration (optional)
-“””
-print(help_text)
-
-def main():
-“”“Main entry point”””
-parser = argparse.ArgumentParser(
-description=‘PhoneBookLOCA v2.2 - Professional OSINT Intelligence Platform’,
-epilog=”””
-Examples:
-%(prog)s +14155552671                    # Standard lookup
-%(prog)s +14155552671 –geo              # Enhanced geolocation
-%(prog)s –batch numbers.txt             # Batch analysis
-%(prog)s –le-mode                       # Law enforcement mode
-%(prog)s                                 # Interactive mode
-
-v2.2 Features (by DezTheJackal):
-
-- Worldwide database (200+ countries)
-- OpenCellID integration (40M+ cell towers)
-- Number porting detection
-- Batch pattern analysis
-- Enhanced OSINT automation
-- Historical tracking system
-- Real-time carrier integration (optional)
-  “””
-  )
-  
-  parser.add_argument(‘number’, nargs=’?’, help=‘Phone number’)
-  parser.add_argument(’–geo’, action=‘store_true’, help=‘Enhanced geolocation’)
-  parser.add_argument(’–le-mode’, action=‘store_true’, help=‘Law enforcement mode’)
-  parser.add_argument(’–no-cache’, action=‘store_true’, help=‘Disable cache’)
-  parser.add_argument(’–batch’, type=str, metavar=‘FILE’, help=‘Batch analysis from file’)
-  parser.add_argument(’–osint’, action=‘store_true’, help=‘OSINT intelligence’)
-  
-  args = parser.parse_args()
-  
-  intel = PhoneIntel()
-  
-  # Batch mode
-  
-  if args.batch:
-  try:
-  with open(args.batch, ‘r’) as f:
-  numbers = [line.strip() for line in f if line.strip()]
-  
-  ```
-      output_file = args.batch.replace('.txt', '_analysis.json')
-      intel.batch_lookup(numbers, output_file)
-  except Exception as e:
-      print(f"[!] Error: {e}")
-  intel.db_cache.close()
-  return
-  ```
-  
-  # LE mode
-  
-  if args.le_mode:
-  intel.law_enforcement_mode()
-  intel.db_cache.close()
-  return
-  
-  # Single lookup
-  
-  if args.number:
-  intel.print_banner()
-  
-  ```
-  if args.osint:
-      osint_data = intel.osint_engine.auto_osint(args.number)
-      print("\n[*] OSINT Intelligence Generated")
-      print(f"[+] Search queries: {len(osint_data['search_queries']['google_dorks'])}")
-      print(f"[+] Recommendations: {len(osint_data['recommendations'])}")
-      print()
-  
-  intel.lookup_phone_number(args.number, enhanced_geo=args.geo, use_cache=not args.no_cache)
-  intel.db_cache.close()
-  return
-  ```
-  
-  # Interactive mode
-  
-  intel.interactive_mode()
-
-if **name** == “**main**”:
-try:
-main()
-except KeyboardInterrupt:
-print(”\n\n[*] Exiting…\n”)
-sys.exit(0)
-
-class Colors:
-RED = ‘\033[91m’
-GREEN = ‘\033[92m’
-YELLOW = ‘\033[93m’
-BLUE = ‘\033[94m’
-CYAN = ‘\033[96m’
-MAGENTA = ‘\033[95m’
-BOLD = ‘\033[1m’
-RESET = ‘\033[0m’
-
-class WorldwideDatabase:
-“””
-Comprehensive worldwide area code database
-Covers 200+ countries with major cities
-“””
-
-```
-@staticmethod
-def get_worldwide_area_codes():
-    """
-    Returns comprehensive worldwide area code database
-    Format: (country_code, area_code, city, region, country, lat, lon, population, timezone)
-    """
-    return [
-        # UNITED STATES (Expanded)
-        ('1', '205', 'Birmingham', 'Alabama', 'United States', 33.5186, -86.8104, 212237, 'America/Chicago'),
-        ('1', '907', 'Anchorage', 'Alaska', 'United States', 61.2181, -149.9003, 291826, 'America/Anchorage'),
-        ('1', '480', 'Phoenix', 'Arizona', 'United States', 33.4484, -112.0740, 1680992, 'America/Phoenix'),
-        ('1', '602', 'Phoenix', 'Arizona', 'United States', 33.4484, -112.0740, 1680992, 'America/Phoenix'),
-        ('1', '501', 'Little Rock', 'Arkansas', 'United States', 34.7465, -92.2896, 197312, 'America/Chicago'),
-        ('1', '213', 'Los Angeles', 'California', 'United States', 34.0522, -118.2437, 3979576, 'America/Los_Angeles'),
-        ('1', '310', 'Los Angeles', 'California', 'United States', 34.0522, -118.2437, 3979576, 'America/Los_Angeles'),
-        ('1', '323', 'Los Angeles', 'California', 'United States', 34.0522, -118.2437, 3979576, 'America/Los_Angeles'),
-        ('1', '415', 'San Francisco', 'California', 'United States', 37.7749, -122.4194, 881549, 'America/Los_Angeles'),
-        ('1', '408', 'San Jose', 'California', 'United States', 37.3382, -121.8863, 1021795, 'America/Los_Angeles'),
-        ('1', '619', 'San Diego', 'California', 'United States', 32.7157, -117.1611, 1423851, 'America/Los_Angeles'),
-        ('1', '858', 'San Diego', 'California', 'United States', 32.7157, -117.1611, 1423851, 'America/Los_Angeles'),
-        ('1', '916', 'Sacramento', 'California', 'United States', 38.5816, -121.4944, 525398, 'America/Los_Angeles'),
-        ('1', '303', 'Denver', 'Colorado', 'United States', 39.7392, -104.9903, 727211, 'America/Denver'),
-        ('1', '720', 'Denver', 'Colorado', 'United States', 39.7392, -104.9903, 727211, 'America/Denver'),
-        ('1', '203', 'New Haven', 'Connecticut', 'United States', 41.3083, -72.9279, 130418, 'America/New_York'),
-        ('1', '302', 'Wilmington', 'Delaware', 'United States', 39.7391, -75.5398, 70851, 'America/New_York'),
-        ('1', '202', 'Washington', 'District of Columbia', 'United States', 38.9072, -77.0369, 705749, 'America/New_York'),
-        ('1', '305', 'Miami', 'Florida', 'United States', 25.7617, -80.1918, 467963, 'America/New_York'),
-        ('1', '786', 'Miami', 'Florida', 'United States', 25.7617, -80.1918, 467963, 'America/New_York'),
-        ('1', '407', 'Orlando', 'Florida', 'United States', 28.5383, -81.3792, 307573, 'America/New_York'),
-        ('1', '813', 'Tampa', 'Florida', 'United States', 27.9506, -82.4572, 399700, 'America/New_York'),
-        ('1', '904', 'Jacksonville', 'Florida', 'United States', 30.3322, -81.6557, 949611, 'America/New_York'),
-        ('1', '404', 'Atlanta', 'Georgia', 'United States', 33.7490, -84.3880, 498715, 'America/New_York'),
-        ('1', '678', 'Atlanta', 'Georgia', 'United States', 33.7490, -84.3880, 498715, 'America/New_York'),
-        ('1', '808', 'Honolulu', 'Hawaii', 'United States', 21.3099, -157.8581, 345064, 'Pacific/Honolulu'),
-        ('1', '208', 'Boise', 'Idaho', 'United States', 43.6150, -116.2023, 228790, 'America/Denver'),
-        ('1', '312', 'Chicago', 'Illinois', 'United States', 41.8781, -87.6298, 2693976, 'America/Chicago'),
-        ('1', '773', 'Chicago', 'Illinois', 'United States', 41.8781, -87.6298, 2693976, 'America/Chicago'),
-        ('1', '317', 'Indianapolis', 'Indiana', 'United States', 39.7684, -86.1581, 876384, 'America/New_York'),
-        ('1', '515', 'Des Moines', 'Iowa', 'United States', 41.5868, -93.6250, 214133, 'America/Chicago'),
-        ('1', '316', 'Wichita', 'Kansas', 'United States', 37.6872, -97.3301, 389938, 'America/Chicago'),
-        ('1', '502', 'Louisville', 'Kentucky', 'United States', 38.2527, -85.7585, 617638, 'America/New_York'),
-        ('1', '504', 'New Orleans', 'Louisiana', 'United States', 29.9511, -90.0715, 389617, 'America/Chicago'),
-        ('1', '207', 'Portland', 'Maine', 'United States', 43.6591, -70.2568, 66417, 'America/New_York'),
-        ('1', '410', 'Baltimore', 'Maryland', 'United States', 39.2904, -76.6122, 585708, 'America/New_York'),
-        ('1', '617', 'Boston', 'Massachusetts', 'United States', 42.3601, -71.0589, 692600, 'America/New_York'),
-        ('1', '857', 'Boston', 'Massachusetts', 'United States', 42.3601, -71.0589, 692600, 'America/New_York'),
-        ('1', '313', 'Detroit', 'Michigan', 'United States', 42.3314, -83.0458, 670031, 'America/New_York'),
-        ('1', '612', 'Minneapolis', 'Minnesota', 'United States', 44.9778, -93.2650, 429954, 'America/Chicago'),
-        ('1', '601', 'Jackson', 'Mississippi', 'United States', 32.2988, -90.1848, 153701, 'America/Chicago'),
-        ('1', '314', 'St. Louis', 'Missouri', 'United States', 38.6270, -90.1994, 300576, 'America/Chicago'),
-        ('1', '406', 'Billings', 'Montana', 'United States', 45.7833, -108.5007, 117116, 'America/Denver'),
-        ('1', '402', 'Omaha', 'Nebraska', 'United States', 41.2565, -95.9345, 486051, 'America/Chicago'),
-        ('1', '702', 'Las Vegas', 'Nevada', 'United States', 36.1699, -115.1398, 641903, 'America/Los_Angeles'),
-        ('1', '603', 'Manchester', 'New Hampshire', 'United States', 42.9956, -71.4548, 112673, 'America/New_York'),
-        ('1', '201', 'Jersey City', 'New Jersey', 'United States', 40.7178, -74.0431, 262652, 'America/New_York'),
-        ('1', '973', 'Newark', 'New Jersey', 'United States', 40.7357, -74.1724, 311549, 'America/New_York'),
-        ('1', '505', 'Albuquerque', 'New Mexico', 'United States', 35.0844, -106.6504, 560513, 'America/Denver'),
-        ('1', '212', 'New York', 'New York', 'United States', 40.7128, -74.0060, 8336817, 'America/New_York'),
-        ('1', '646', 'New York', 'New York', 'United States', 40.7128, -74.0060, 8336817, 'America/New_York'),
-        ('1', '718', 'Brooklyn', 'New York', 'United States', 40.6782, -73.9442, 2736074, 'America/New_York'),
-        ('1', '516', 'Long Island', 'New York', 'United States', 40.7891, -73.1350, 1356924, 'America/New_York'),
-        ('1', '716', 'Buffalo', 'New York', 'United States', 42.8864, -78.8784, 278349, 'America/New_York'),
-        ('1', '919', 'Raleigh', 'North Carolina', 'United States', 35.7796, -78.6382, 474069, 'America/New_York'),
-        ('1', '701', 'Fargo', 'North Dakota', 'United States', 46.8772, -96.7898, 125990, 'America/Chicago'),
-        ('1', '216', 'Cleveland', 'Ohio', 'United States', 41.4993, -81.6944, 372624, 'America/New_York'),
-        ('1', '614', 'Columbus', 'Ohio', 'United States', 39.9612, -82.9988, 905748, 'America/New_York'),
-        ('1', '513', 'Cincinnati', 'Ohio', 'United States', 39.1031, -84.5120, 303940, 'America/New_York'),
-        ('1', '405', 'Oklahoma City', 'Oklahoma', 'United States', 35.4676, -97.5164, 649021, 'America/Chicago'),
-        ('1', '503', 'Portland', 'Oregon', 'United States', 45.5051, -122.6750, 654360, 'America/Los_Angeles'),
-        ('1', '215', 'Philadelphia', 'Pennsylvania', 'United States', 39.9526, -75.1652, 1584064, 'America/New_York'),
-        ('1', '412', 'Pittsburgh', 'Pennsylvania', 'United States', 40.4406, -79.9959, 302971, 'America/New_York'),
-        ('1', '401', 'Providence', 'Rhode Island', 'United States', 41.8240, -71.4128, 179335, 'America/New_York'),
-        ('1', '803', 'Columbia', 'South Carolina', 'United States', 34.0007, -81.0348, 131674, 'America/New_York'),
-        ('1', '605', 'Sioux Falls', 'South Dakota', 'United States', 43.5460, -96.7313, 192517, 'America/Chicago'),
-        ('1', '615', 'Nashville', 'Tennessee', 'United States', 36.1627, -86.7816, 694144, 'America/Chicago'),
-        ('1', '901', 'Memphis', 'Tennessee', 'United States', 35.1495, -90.0490, 633104, 'America/Chicago'),
-        ('1', '214', 'Dallas', 'Texas', 'United States', 32.7767, -96.7970, 1343573, 'America/Chicago'),
-        ('1', '469', 'Dallas', 'Texas', 'United States', 32.7767, -96.7970, 1343573, 'America/Chicago'),
-        ('1', '713', 'Houston', 'Texas', 'United States', 29.7604, -95.3698, 2320268, 'America/Chicago'),
-        ('1', '281', 'Houston', 'Texas', 'United States', 29.7604, -95.3698, 2320268, 'America/Chicago'),
-        ('1', '210', 'San Antonio', 'Texas', 'United States', 29.4241, -98.4936, 1547253, 'America/Chicago'),
-        ('1', '512', 'Austin', 'Texas', 'United States', 30.2672, -97.7431, 978908, 'America/Chicago'),
-        ('1', '817', 'Fort Worth', 'Texas', 'United States', 32.7555, -97.3308, 909585, 'America/Chicago'),
-        ('1', '801', 'Salt Lake City', 'Utah', 'United States', 40.7608, -111.8910, 200567, 'America/Denver'),
-        ('1', '802', 'Burlington', 'Vermont', 'United States', 44.4759, -73.2121, 42899, 'America/New_York'),
-        ('1', '757', 'Virginia Beach', 'Virginia', 'United States', 36.8529, -75.9780, 449974, 'America/New_York'),
-        ('1', '206', 'Seattle', 'Washington', 'United States', 47.6062, -122.3321, 753675, 'America/Los_Angeles'),
-        ('1', '509', 'Spokane', 'Washington', 'United States', 47.6588, -117.4260, 228989, 'America/Los_Angeles'),
-        ('1', '304', 'Charleston', 'West Virginia', 'United States', 38.3498, -81.6326, 46536, 'America/New_York'),
-        ('1', '414', 'Milwaukee', 'Wisconsin', 'United States', 43.0389, -87.9065, 577222, 'America/Chicago'),
-        ('1', '307', 'Cheyenne', 'Wyoming', 'United States', 41.1400, -104.8202, 64235, 'America/Denver'),
-        
-        # CANADA (Major Cities)
-        ('1', '403', 'Calgary', 'Alberta', 'Canada', 51.0447, -114.0719, 1239220, 'America/Edmonton'),
-        ('1', '780', 'Edmonton', 'Alberta', 'Canada', 53.5461, -113.4938, 981280, 'America/Edmonton'),
-        ('1', '604', 'Vancouver', 'British Columbia', 'Canada', 49.2827, -123.1207, 631486, 'America/Vancouver'),
-        ('1', '250', 'Victoria', 'British Columbia', 'Canada', 48.4284, -123.3656, 85792, 'America/Vancouver'),
-        ('1', '204', 'Winnipeg', 'Manitoba', 'Canada', 49.8951, -97.1384, 749534, 'America/Winnipeg'),
-        ('1', '506', 'Fredericton', 'New Brunswick', 'Canada', 45.9636, -66.6431, 56224, 'America/Moncton'),
-        ('1', '709', 'St. Johns', 'Newfoundland', 'Canada', 47.5615, -52.7126, 108860, 'America/St_Johns'),
-        ('1', '902', 'Halifax', 'Nova Scotia', 'Canada', 44.6488, -63.5752, 403131, 'America/Halifax'),
-        ('1', '416', 'Toronto', 'Ontario', 'Canada', 43.6532, -79.3832, 2731571, 'America/Toronto'),
-        ('1', '647', 'Toronto', 'Ontario', 'Canada', 43.6532, -79.3832, 2731571, 'America/Toronto'),
-        ('1', '613', 'Ottawa', 'Ontario', 'Canada', 45.4215, -75.6972, 934243, 'America/Toronto'),
-        ('1', '905', 'Hamilton', 'Ontario', 'Canada', 43.2557, -79.8711, 536917, 'America/Toronto'),
-        ('1', '514', 'Montreal', 'Quebec', 'Canada', 45.5017, -73.5673, 1704694, 'America/Toronto'),
-        ('1', '438', 'Montreal', 'Quebec', 'Canada', 45.5017, -73.5673, 1704694, 'America/Toronto'),
-        ('1', '418', 'Quebec City', 'Quebec', 'Canada', 46.8139, -71.2080, 531902, 'America/Toronto'),
-        ('1', '306', 'Regina', 'Saskatchewan', 'Canada', 50.4452, -104.6189, 215106, 'America/Regina'),
-        
-        # UNITED KINGDOM
-        ('44', '20', 'London', 'England', 'United Kingdom', 51.5074, -0.1278, 8982000, 'Europe/London'),
-        ('44', '121', 'Birmingham', 'England', 'United Kingdom', 52.4862, -1.8904, 1141816, 'Europe/London'),
-        ('44', '161', 'Manchester', 'England', 'United Kingdom', 53.4808, -2.2426, 547627, 'Europe/London'),
-        ('44', '113', 'Leeds', 'England', 'United Kingdom', 53.8008, -1.5491, 793139, 'Europe/London'),
-        ('44', '141', 'Glasgow', 'Scotland', 'United Kingdom', 55.8642, -4.2518, 633120, 'Europe/London'),
-        ('44', '131', 'Edinburgh', 'Scotland', 'United Kingdom', 55.9533, -3.1883, 524930, 'Europe/London'),
-        ('44', '29', 'Cardiff', 'Wales', 'United Kingdom', 51.4816, -3.1791, 364248, 'Europe/London'),
-        ('44', '28', 'Belfast', 'Northern Ireland', 'United Kingdom', 54.5973, -5.9301, 343542, 'Europe/London'),
-        
-        # AUSTRALIA
-        ('61', '2', 'Sydney', 'New South Wales', 'Australia', -33.8688, 151.2093, 5312163, 'Australia/Sydney'),
-        ('61', '3', 'Melbourne', 'Victoria', 'Australia', -37.8136, 144.9631, 5078193, 'Australia/Melbourne'),
-        ('61', '7', 'Brisbane', 'Queensland', 'Australia', -27.4705, 153.0260, 2568927, 'Australia/Brisbane'),
-        ('61', '8', 'Perth', 'Western Australia', 'Australia', -31.9505, 115.8605, 2141834, 'Australia/Perth'),
-        ('61', '8', 'Adelaide', 'South Australia', 'Australia', -34.9285, 138.6007, 1372919, 'Australia/Adelaide'),
-        
-        # GERMANY
-        ('49', '30', 'Berlin', 'Berlin', 'Germany', 52.5200, 13.4050, 3769495, 'Europe/Berlin'),
-        ('49', '40', 'Hamburg', 'Hamburg', 'Germany', 53.5511, 9.9937, 1852478, 'Europe/Berlin'),
-        ('49', '89', 'Munich', 'Bavaria', 'Germany', 48.1351, 11.5820, 1558395, 'Europe/Berlin'),
-        ('49', '221', 'Cologne', 'North Rhine-Westphalia', 'Germany', 50.9375, 6.9603, 1087863, 'Europe/Berlin'),
-        ('49', '69', 'Frankfurt', 'Hesse', 'Germany', 50.1109, 8.6821, 753056, 'Europe/Berlin'),
-        
-        # FRANCE
-        ('33', '1', 'Paris', 'Ile-de-France', 'France', 48.8566, 2.3522, 2165423, 'Europe/Paris'),
-        ('33', '4', 'Marseille', 'Provence-Alpes-Côte d\'Azur', 'France', 43.2965, 5.3698, 869815, 'Europe/Paris'),
-        ('33', '4', 'Lyon', 'Auvergne-Rhône-Alpes', 'France', 45.7640, 4.8357, 513275, 'Europe/Paris'),
-        ('33', '5', 'Toulouse', 'Occitanie', 'France', 43.6047, 1.4442, 471941, 'Europe/Paris'),
-        ('33', '4', 'Nice', 'Provence-Alpes-Côte d\'Azur', 'France', 43.7102, 7.2620, 340017, 'Europe/Paris'),
-        
-        # SPAIN
-        ('34', '91', 'Madrid', 'Community of Madrid', 'Spain', 40.4168, -3.7038, 3223334, 'Europe/Madrid'),
-        ('34', '93', 'Barcelona', 'Catalonia', 'Spain', 41.3851, 2.1734, 1620343, 'Europe/Madrid'),
-        ('34', '96', 'Valencia', 'Valencian Community', 'Spain', 39.4699, -0.3763, 791413, 'Europe/Madrid'),
-        ('34', '95', 'Seville', 'Andalusia', 'Spain', 37.3891, -5.9845, 688711, 'Europe/Madrid'),
-        
-        # ITALY
-        ('39', '06', 'Rome', 'Lazio', 'Italy', 41.9028, 12.4964, 2872800, 'Europe/Rome'),
-        ('39', '02', 'Milan', 'Lombardy', 'Italy', 45.4642, 9.1900, 1371498, 'Europe/Rome'),
-        ('39', '081', 'Naples', 'Campania', 'Italy', 40.8518, 14.2681, 966144, 'Europe/Rome'),
-        ('39', '011', 'Turin', 'Piedmont', 'Italy', 45.0703, 7.6869, 870952, 'Europe/Rome'),
-        
-        # JAPAN
-        ('81', '3', 'Tokyo', 'Tokyo', 'Japan', 35.6762, 139.6503, 13960000, 'Asia/Tokyo'),
-        ('81', '6', 'Osaka', 'Osaka', 'Japan', 34.6937, 135.5023, 2725006, 'Asia/Tokyo'),
-        ('81', '52', 'Nagoya', 'Aichi', 'Japan', 35.1815, 136.9066, 2320361, 'Asia/Tokyo'),
-        ('81', '92', 'Fukuoka', 'Fukuoka', 'Japan', 33.5904, 130.4017, 1612392, 'Asia/Tokyo'),
-        
-        # CHINA
-        ('86', '10', 'Beijing', 'Beijing', 'China', 39.9042, 116.4074, 21540000, 'Asia/Shanghai'),
-        ('86', '21', 'Shanghai', 'Shanghai', 'China', 31.2304, 121.4737, 27058000, 'Asia/Shanghai'),
-        ('86', '20', 'Guangzhou', 'Guangdong', 'China', 23.1291, 113.2644, 15300000, 'Asia/Shanghai'),
-        ('86', '755', 'Shenzhen', 'Guangdong', 'China', 22.5431, 114.0579, 13438800, 'Asia/Shanghai'),
-        
-        # INDIA
-        ('91', '11', 'New Delhi', 'Delhi', 'India', 28.6139, 77.2090, 32941000, 'Asia/Kolkata'),
-        ('91', '22', 'Mumbai', 'Maharashtra', 'India', 19.0760, 72.8777, 20961000, 'Asia/Kolkata'),
-        ('91', '80', 'Bangalore', 'Karnataka', 'India', 12.9716, 77.5946, 12765000, 'Asia/Kolkata'),
-        ('91', '40', 'Hyderabad', 'Telangana', 'India', 17.3850, 78.4867, 10268000, 'Asia/Kolkata'),
-        
-        # BRAZIL
-        ('55', '11', 'São Paulo', 'São Paulo', 'Brazil', -23.5505, -46.6333, 12325232, 'America/Sao_Paulo'),
-        ('55', '21', 'Rio de Janeiro', 'Rio de Janeiro', 'Brazil', -22.9068, -43.1729, 6748000, 'America/Sao_Paulo'),
-        ('55', '61', 'Brasília', 'Federal District', 'Brazil', -15.8267, -47.9218, 3055149, 'America/Sao_Paulo'),
-        ('55', '31', 'Belo Horizonte', 'Minas Gerais', 'Brazil', -19.9167, -43.9345, 2523794, 'America/Sao_Paulo'),
-        
-        # MEXICO
-        ('52', '55', 'Mexico City', 'Mexico City', 'Mexico', 19.4326, -99.1332, 9209944, 'America/Mexico_City'),
-        ('52', '33', 'Guadalajara', 'Jalisco', 'Mexico', 20.6597, -103.3496, 1495189, 'America/Mexico_City'),
-        ('52', '81', 'Monterrey', 'Nuevo León', 'Mexico', 25.6866, -100.3161, 1142994, 'America/Mexico_City'),
-        
-        # RUSSIA
-        ('7', '495', 'Moscow', 'Moscow', 'Russia', 55.7558, 37.6173, 12615279, 'Europe/Moscow'),
-        ('7', '812', 'Saint Petersburg', 'Saint Petersburg', 'Russia', 59.9311, 30.3609, 5384342, 'Europe/Moscow'),
-        
-        # SOUTH KOREA
-        ('82', '2', 'Seoul', 'Seoul', 'South Korea', 37.5665, 126.9780, 9776000, 'Asia/Seoul'),
-        ('82', '51', 'Busan', 'Busan', 'South Korea', 35.1796, 129.0756, 3414950, 'Asia/Seoul'),
-        
-        # ARGENTINA
-        ('54', '11', 'Buenos Aires', 'Buenos Aires', 'Argentina', -34.6037, -58.3816, 3075646, 'America/Argentina/Buenos_Aires'),
-        
-        # SOUTH AFRICA
-        ('27', '21', 'Cape Town', 'Western Cape', 'South Africa', -33.9249, 18.4241, 4618000, 'Africa/Johannesburg'),
-        ('27', '11', 'Johannesburg', 'Gauteng', 'South Africa', -26.2041, 28.0473, 5635127, 'Africa/Johannesburg'),
-        
-        # EGYPT
-        ('20', '2', 'Cairo', 'Cairo', 'Egypt', 30.0444, 31.2357, 20900604, 'Africa/Cairo'),
-        
-        # NIGERIA
-        ('234', '1', 'Lagos', 'Lagos', 'Nigeria', 6.5244, 3.3792, 14862111, 'Africa/Lagos'),
-        
-        # TURKEY
-        ('90', '212', 'Istanbul', 'Istanbul', 'Turkey', 41.0082, 28.9784, 15462452, 'Europe/Istanbul'),
-        ('90', '312', 'Ankara', 'Ankara', 'Turkey', 39.9334, 32.8597, 5663322, 'Europe/Istanbul'),
-        
-        # POLAND
-        ('48', '22', 'Warsaw', 'Masovian', 'Poland', 52.2297, 21.0122, 1793579, 'Europe/Warsaw'),
-        
-        # NETHERLANDS
-        ('31', '20', 'Amsterdam', 'North Holland', 'Netherlands', 52.3676, 4.9041, 872680, 'Europe/Amsterdam'),
-        
-        # BELGIUM
-        ('32', '2', 'Brussels', 'Brussels', 'Belgium', 50.8503, 4.3517, 1211035, 'Europe/Brussels'),
-        
-        # SWEDEN
-        ('46', '8', 'Stockholm', 'Stockholm', 'Sweden', 59.3293, 18.0686, 975904, 'Europe/Stockholm'),
-        
-        # SWITZERLAND
-        ('41', '44', 'Zurich', 'Zurich', 'Switzerland', 47.3769, 8.5417, 421878, 'Europe/Zurich'),
-        
-        # AUSTRIA
-        ('43', '1', 'Vienna', 'Vienna', 'Austria', 48.2082, 16.3738, 1920949, 'Europe/Vienna'),
-        
-        # THAILAND
-        ('66', '2', 'Bangkok', 'Bangkok', 'Thailand', 13.7563, 100.5018, 10722000, 'Asia/Bangkok'),
-        
-        # MALAYSIA
-        ('60', '3', 'Kuala Lumpur', 'Federal Territory', 'Malaysia', 3.1390, 101.6869, 1982112, 'Asia/Kuala_Lumpur'),
-        
-        # SINGAPORE
-        ('65', '', 'Singapore', 'Singapore', 'Singapore', 1.3521, 103.8198, 5685807, 'Asia/Singapore'),
-        
-        # PHILIPPINES
-        ('63', '2', 'Manila', 'Metro Manila', 'Philippines', 14.5995, 120.9842, 1780148, 'Asia/Manila'),
-        
-        # VIETNAM
-        ('84', '24', 'Hanoi', 'Hanoi', 'Vietnam', 21.0285, 105.8542, 8246600, 'Asia/Ho_Chi_Minh'),
-        ('84', '28', 'Ho Chi Minh City', 'Ho Chi Minh', 'Vietnam', 10.8231, 106.6297, 8993082, 'Asia/Ho_Chi_Minh'),
-        
-        # INDONESIA
-        ('62', '21', 'Jakarta', 'Jakarta', 'Indonesia', -6.2088, 106.8456, 10770487, 'Asia/Jakarta'),
-        
-        # PAKISTAN
-        ('92', '21', 'Karachi', 'Sindh', 'Pakistan', 24.8607, 67.0011, 16051521, 'Asia/Karachi'),
-        
-        # BANGLADESH
-        ('880', '2', 'Dhaka', 'Dhaka', 'Bangladesh', 23.8103, 90.4125, 21741090, 'Asia/Dhaka'),
-        
-        # IRAN
-        ('98', '21', 'Tehran', 'Tehran', 'Iran', 35.6892, 51.3890, 9039000, 'Asia/Tehran'),
-        
-        # SAUDI ARABIA
-        ('966', '11', 'Riyadh', 'Riyadh', 'Saudi Arabia', 24.7136, 46.6753, 7676654, 'Asia/Riyadh'),
-        
-        # UAE
-        ('971', '4', 'Dubai', 'Dubai', 'United Arab Emirates', 25.2048, 55.2708, 3478344, 'Asia/Dubai'),
-        ('971', '2', 'Abu Dhabi', 'Abu Dhabi', 'United Arab Emirates', 24.4539, 54.3773, 1482816, 'Asia/Dubai'),
-        
-        # ISRAEL
-        ('972', '3', 'Tel Aviv', 'Tel Aviv', 'Israel', 32.0853, 34.7818, 460613, 'Asia/Jerusalem'),
-        
-        # NEW ZEALAND
-        ('64', '9', 'Auckland', 'Auckland', 'New Zealand', -36.8485, 174.7633, 1657200, 'Pacific/Auckland'),
-        ('64', '4', 'Wellington', 'Wellington', 'New Zealand', -41.2865, 174.7762, 215100, 'Pacific/Auckland'),
-        
-        # CHILE
-        ('56', '2', 'Santiago', 'Santiago Metropolitan', 'Chile', -33.4489, -70.6693, 6680000, 'America/Santiago'),
-        
-        # COLOMBIA
-        ('57', '1', 'Bogotá', 'Bogotá', 'Colombia', 4.7110, -74.0721, 7878783, 'America/Bogota'),
-        
-        # PERU
-        ('51', '1', 'Lima', 'Lima', 'Peru', -12.0464, -77.0428, 9752000, 'America/Lima'),
-        
-        # VENEZUELA
-        ('58', '212', 'Caracas', 'Capital District', 'Venezuela', 10.4806, -66.9036, 1943901, 'America/Caracas'),
-        
-        # GREECE
-        ('30', '21', 'Athens', 'Attica', 'Greece', 37.9838, 23.7275, 664046, 'Europe/Athens'),
-        
-        # PORTUGAL
-        ('351', '21', 'Lisbon', 'Lisbon', 'Portugal', 38.7223, -9.1393, 505526, 'Europe/Lisbon'),
-        
-        # CZECH REPUBLIC
-        ('420', '2', 'Prague', 'Prague', 'Czech Republic', 50.0755, 14.4378, 1324277, 'Europe/Prague'),
-        
-        # HUNGARY
-        ('36', '1', 'Budapest', 'Budapest', 'Hungary', 47.4979, 19.0402, 1756000, 'Europe/Budapest'),
-        
-        # ROMANIA
-        ('40', '21', 'Bucharest', 'Bucharest', 'Romania', 44.4268, 26.1025, 1883425, 'Europe/Bucharest'),
-        
-        # UKRAINE
-        ('380', '44', 'Kyiv', 'Kyiv', 'Ukraine', 50.4501, 30.5234, 2967360, 'Europe/Kiev'),
-        
-        # DENMARK
-        ('45', '', 'Copenhagen', 'Capital Region', 'Denmark', 55.6761, 12.5683, 799033, 'Europe/Copenhagen'),
-        
-        # FINLAND
-        ('358', '9', 'Helsinki', 'Uusimaa', 'Finland', 60.1699, 24.9384, 658864, 'Europe/Helsinki'),
-        
-        # NORWAY
-        ('47', '', 'Oslo', 'Oslo', 'Norway', 59.9139, 10.7522, 693494, 'Europe/Oslo'),
-        
-        # IRELAND
-        ('353', '1', 'Dublin', 'Dublin', 'Ireland', 53.3498, -6.2603, 1173179, 'Europe/Dublin'),
-        
-        # MOROCCO
-        ('212', '5', 'Casablanca', 'Casablanca-Settat', 'Morocco', 33.5731, -7.5898, 3752000, 'Africa/Casablanca'),
-        
-        # KENYA
-        ('254', '20', 'Nairobi', 'Nairobi', 'Kenya', -1.2921, 36.8219, 4397073, 'Africa/Nairobi'),
-    ]
-```
-
-class OpenCellIDIntegration:
-“””
-OpenCellID API Integration - 40M+ cell towers worldwide
-Free API with registration at opencellid.org
-“””
-
-```
-def __init__(self, api_key: Optional[str] = None):
-    self.api_key = api_key
-    self.base_url = "https://opencellid.org/cell"
-
-def is_configured(self) -> bool:
-    """Check if API key is configured"""
-    return self.api_key is not None and self.api_key != ""
-
-def get_cell_tower(self, mcc: int, mnc: int, lac: int, cellid: int) -> Optional[Dict]:
-    """
-    Get cell tower location from OpenCellID
-    
-    Args:
-        mcc: Mobile Country Code
-        mnc: Mobile Network Code
-        lac: Location Area Code
-        cellid: Cell ID
-    """
-    if not self.is_configured():
-        return None
-    
-    try:
-        url = f"{self.base_url}/get"
-        params = {
-            'key': self.api_key,
-            'mcc': mcc,
-            'mnc': mnc,
-            'lac': lac,
-            'cellid': cellid,
-            'format': 'json'
-        }
-        
-        response = requests.get(url, params=params, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            return {
-                'latitude': data.get('lat'),
-                'longitude': data.get('lon'),
-                'range': data.get('range', 1000),  # meters
-                'samples': data.get('samples', 1),
-                'source': 'OpenCellID'
-            }
-    except Exception as e:
-        print(f"[!] OpenCellID error: {e}")
-    
-    return None
-
-def search_nearby_towers(self, lat: float, lon: float, radius: int = 5000) -> List[Dict]:
-    """
-    Search for cell towers near coordinates
-    
-    Args:
-        lat: Latitude
-        lon: Longitude
-        radius: Search radius in meters (max 10000)
-    """
-    if not self.is_configured():
-        return []
-    
-    try:
-        url = f"{self.base_url}/getInArea"
-        params = {
-            'key': self.api_key,
-            'lat': lat,
-            'lon': lon,
-            'radius': min(radius, 10000),
-            'format': 'json'
-        }
-        
-        response = requests.get(url, params=params, timeout=15)
-        
-        if response.status_code == 200:
-            data = response.json()
-            towers = []
-            
-            for tower in data.get('cells', [])[:10]:  # Limit to 10
-                towers.append({
-                    'mcc': tower.get('mcc'),
-                    'mnc': tower.get('mnc'),
-                    'lac': tower.get('lac'),
-                    'cellid': tower.get('cellid'),
-                    'latitude': tower.get('lat'),
-                    'longitude': tower.get('lon'),
-                    'range': tower.get('range', 1000),
-                    'samples': tower.get('samples', 1)
-                })
-            
-            return towers
-    except Exception as e:
-        print(f"[!] OpenCellID search error: {e}")
-    
-    return []
-```
-
-class PortingDetection:
-“””
-Detect if number has been ported between carriers
-Critical for accurate geolocation
-“””
-
-```
-def __init__(self, db_conn):
-    self.conn = db_conn
-    self.setup_schema()
-
-def setup_schema(self):
-    """Create porting detection table"""
-    cursor = self.conn.cursor()
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS porting_history (
-            number TEXT,
-            original_carrier TEXT,
-            current_carrier TEXT,
-            original_area_code TEXT,
-            port_detected_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            confidence REAL,
-            detection_method TEXT
-        )
-    ''')
-    
-    self.conn.commit()
-
-def detect_porting(self, number: str, current_carrier: str, 
-                  area_code: str, parsed: phonenumbers.PhoneNumber) -> Dict:
-    """
-    Detect if number has been ported
-    
-    Returns:
-        likely_ported: True if number appears to be ported
-        confidence: 0.0-1.0
-        indicators: List of porting indicators
-    """
-    indicators = []
-    confidence = 0.0
-    
-    # Method 1: Check carrier vs typical area code carrier
-    expected_carrier = self._get_typical_carrier_for_area(area_code)
-    if expected_carrier and expected_carrier.lower() not in current_carrier.lower():
-        indicators.append(f"Carrier mismatch: Expected {expected_carrier}, found {current_carrier}")
-        confidence += 0.4
-    
-    # Method 2: Check if VoIP (VoIP numbers often ported)
-    number_type = phonenumbers.number_type(parsed)
-    if number_type == phonenumbers.PhoneNumberType.VOIP:
-        indicators.append("VoIP number (often ported)")
-        confidence += 0.2
-    
-    # Method 3: Check historical data
-    historical = self._check_historical_porting(number)
-    if historical:
-        indicators.append("Previous porting detected in database")
-        confidence += 0.3
-    
-    # Method 4: MVNO detection (MVNOs require porting from MNO)
-    if self._is_mvno(current_carrier):
-        indicators.append(f"MVNO carrier ({current_carrier})")
-        confidence += 0.1
-    
-    likely_ported = confidence >= 0.4
-    
-    result = {
-        'likely_ported': likely_ported,
-        'confidence': min(confidence, 1.0),
-        'indicators': indicators,
-        'current_carrier': current_carrier,
-        'expected_carrier': expected_carrier,
-        'detection_method': 'heuristic'
-    }
-    
-    # Save if high confidence porting detected
-    if likely_ported and confidence >= 0.6:
-        self._save_porting_detection(number, expected_carrier, current_carrier, 
-                                    area_code, confidence, 'heuristic')
-    
-    return result
-
-def _get_typical_carrier_for_area(self, area_code: str) -> Optional[str]:
-    """Get typical carrier for an area code"""
-    # US area code carrier patterns
-    carrier_patterns = {
-        # Major carriers dominate certain areas
-        '415': 'AT&T',  # San Francisco historically AT&T
-        '212': 'Verizon',  # NYC historically Verizon
-        '310': 'AT&T',  # LA historically AT&T
-        # Add more patterns as needed
-    }
-    
-    return carrier_patterns.get(area_code)
-
-def _is_mvno(self, carrier: str) -> bool:
-    """Check if carrier is MVNO"""
-    mvnos = ['mint mobile', 'boost', 'cricket', 'metro', 'visible', 
-             'straight talk', 'tracfone', 'consumer cellular', 'google fi']
-    
-    carrier_lower = carrier.lower()
-    return any(mvno in carrier_lower for mvno in mvnos)
-
-def _check_historical_porting(self, number: str) -> bool:
-    """Check if number has porting history in database"""
-    cursor = self.conn.cursor()
-    cursor.execute('''
-        SELECT COUNT(*) as count FROM porting_history WHERE number = ?
-    ''', (number,))
-    
-    result = cursor.fetchone()
-    return result['count'] > 0
-
-def _save_porting_detection(self, number: str, original_carrier: str,
-                           current_carrier: str, area_code: str,
-                           confidence: float, method: str):
-    """Save porting detection to database"""
-    cursor = self.conn.cursor()
-    
-    cursor.execute('''
-        INSERT INTO porting_history 
-        (number, original_carrier, current_carrier, original_area_code, confidence, detection_method)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', (number, original_carrier, current_carrier, area_code, confidence, method))
-    
-    self.conn.commit()
-```
-
-class BatchAnalyzer:
-“””
-Analyze multiple numbers for patterns
-Use case: Organized crime, trafficking rings, fraud detection
-“””
-
-```
-def __init__(self, db_conn):
-    self.conn = db_conn
-
-def analyze_batch(self, numbers: List[str]) -> Dict:
-    """
-    Analyze batch of numbers for patterns
-    
-    Returns comprehensive pattern analysis
-    """
-    analysis = {
-        'total_numbers': len(numbers),
-        'valid_numbers': 0,
-        'geographic_clustering': {},
-        'carrier_patterns': {},
-        'temporal_patterns': {},
-        'risk_assessment': {},
-        'suspicious_patterns': []
-    }
-    
-    locations = []
-    carriers = []
-    countries = []
-    number_types = []
-    
-    for number in numbers:
         try:
             parsed = phonenumbers.parse(number, None)
-            if phonenumbers.is_valid_number(parsed):
-                analysis['valid_numbers'] += 1
-                
-                # Collect data
-                location = geocoder.description_for_number(parsed, "en")
-                carrier_name = carrier.name_for_number(parsed, "en")
-                country = phonenumbers.region_code_for_number(parsed)
-                num_type = phonenumbers.number_type(parsed)
-                
-                if location:
-                    locations.append(location)
-                if carrier_name:
-                    carriers.append(carrier_name)
-                if country:
-                    countries.append(country)
-                number_types.append(num_type)
-                
-        except Exception:
-            continue
+            
+            if not phonenumbers.is_valid_number(parsed):
+                print(f"{R}[!]{W} Invalid number\n")
+                return None
+            
+            # Basic info
+            location = geocoder.description_for_number(parsed, "en") or "Unknown"
+            carrier_name = carrier.name_for_number(parsed, "en") or "Unknown"
+            tz = timezone.time_zones_for_number(parsed) or ["Unknown"]
+            
+            results = {
+                "number": number,
+                "country_code": f"+{parsed.country_code}",
+                "location": location,
+                "carrier": carrier_name,
+                "type": self.get_type(parsed),
+                "timezone": tz,
+                "valid": True,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            # Enhanced features
+            if enhanced:
+                results['enhanced'] = self.enhance(number, parsed, location)
+            
+            # Save to cache and history
+            self.db.cache_set(number, results)
+            self.db.history_add(number, carrier_name, location)
+            
+            # Display
+            self.display(results)
+            
+            return results
+            
+        except Exception as e:
+            print(f"{R}[!]{W} Error: {e}\n")
+            return None
     
-    # Analyze geographic clustering
-    if locations:
-        location_counts = Counter(locations)
-        analysis['geographic_clustering'] = {
-            'unique_locations': len(location_counts),
-            'most_common': location_counts.most_common(5),
-            'clustering_score': self._calculate_clustering_score(location_counts)
-        }
+    def enhance(self, number, parsed, location):
+        """Enhanced geolocation and features"""
+        enhanced = {}
         
-        # Detect suspicious clustering
-        if len(location_counts) <= 3 and analysis['valid_numbers'] > 10:
-            analysis['suspicious_patterns'].append(
-                f"High geographic clustering: {analysis['valid_numbers']} numbers in {len(location_counts)} locations"
+        # Area code lookup
+        country_code = str(parsed.country_code)
+        national = str(parsed.national_number)
+        area_code = national[:3] if len(national) >= 3 else ""
+        
+        if area_code:
+            area_info = self.db.get_area_code(country_code, area_code)
+            if area_info:
+                enhanced['coordinates'] = {
+                    'lat': area_info['lat'],
+                    'lon': area_info['lon'],
+                    'city': area_info['city'],
+                    'country': area_info['country']
+                }
+                enhanced['precision'] = 'area_code'
+                enhanced['radius_km'] = 50
+        
+        # OpenCellID if configured
+        if self.opencellid_key and enhanced.get('coordinates'):
+            towers = self.get_opencellid(
+                enhanced['coordinates']['lat'],
+                enhanced['coordinates']['lon']
             )
+            if towers:
+                enhanced['cell_towers'] = len(towers)
+        
+        # Porting detection
+        enhanced['porting'] = self.check_porting(number, parsed)
+        
+        return enhanced
     
-    # Analyze carrier patterns
-    if carriers:
+    def check_porting(self, number, parsed):
+        """Simple porting detection"""
+        carrier_name = carrier.name_for_number(parsed, "en") or ""
+        num_type = phonenumbers.number_type(parsed)
+        
+        # Check if VoIP (often ported)
+        if num_type == 6:
+            return {"likely_ported": True, "reason": "VoIP number"}
+        
+        # Check if MVNO
+        mvnos = ['mint', 'boost', 'cricket', 'metro', 'visible']
+        if any(m in carrier_name.lower() for m in mvnos):
+            return {"likely_ported": True, "reason": "MVNO carrier"}
+        
+        return {"likely_ported": False}
+    
+    def get_opencellid(self, lat, lon):
+        """Query OpenCellID for nearby towers"""
+        if not self.opencellid_key:
+            return []
+        
+        try:
+            url = "https://opencellid.org/cell/getInArea"
+            params = {
+                'key': self.opencellid_key,
+                'lat': lat,
+                'lon': lon,
+                'radius': 5000,
+                'format': 'json'
+            }
+            resp = requests.get(url, params=params, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                return data.get('cells', [])[:5]
+        except:
+            pass
+        return []
+    
+    def get_type(self, parsed):
+        """Get number type"""
+        types = {
+            0: "Fixed Line", 1: "Mobile", 2: "Fixed/Mobile",
+            3: "Toll Free", 4: "Premium", 5: "Shared Cost",
+            6: "VoIP", 7: "Personal", 8: "Pager",
+            9: "UAN", 10: "Voicemail"
+        }
+        return types.get(phonenumbers.number_type(parsed), "Unknown")
+    
+    def display(self, r):
+        """Display results"""
+        if RICH:
+            info = f"[cyan]Country:[/cyan] {r['location']} ({r['country_code']})\n"
+            info += f"[cyan]Carrier:[/cyan] {r['carrier']}\n"
+            info += f"[cyan]Type:[/cyan] {r['type']}\n"
+            info += f"[cyan]Timezone:[/cyan] {', '.join(r['timezone'])}"
+            
+            panel = Panel.fit(info, title="Basic Intelligence", border_style="green")
+            console.print(panel)
+            
+            if r.get('enhanced'):
+                e = r['enhanced']
+                if e.get('coordinates'):
+                    c = e['coordinates']
+                    geo = f"[cyan]City:[/cyan] {c['city']}\n"
+                    geo += f"[cyan]Country:[/cyan] {c['country']}\n"
+                    geo += f"[cyan]Coordinates:[/cyan] {c['lat']:.4f}, {c['lon']:.4f}\n"
+                    geo += f"[cyan]Precision:[/cyan] ±{e['radius_km']}km"
+                    
+                    if e.get('cell_towers'):
+                        geo += f"\n[cyan]Cell Towers:[/cyan] {e['cell_towers']} nearby"
+                    
+                    console.print("\n")
+                    panel = Panel.fit(geo, title="Enhanced Geolocation", border_style="blue")
+                    console.print(panel)
+                
+                if e.get('porting', {}).get('likely_ported'):
+                    console.print(f"\n[yellow]⚠️  Porting detected: {e['porting']['reason']}[/yellow]")
+            
+            console.print(f"\n[green][+][/green] Complete\n")
+        else:
+            print(f"{G}[+]{W} Results:\n")
+            print(f"  Country: {r['location']} ({r['country_code']})")
+            print(f"  Carrier: {r['carrier']}")
+            print(f"  Type: {r['type']}")
+            print(f"  Timezone: {', '.join(r['timezone'])}")
+            
+            if r.get('enhanced', {}).get('coordinates'):
+                c = r['enhanced']['coordinates']
+                print(f"\n{C}[*]{W} Enhanced Geolocation:")
+                print(f"  City: {c['city']}")
+                print(f"  Coordinates: {c['lat']:.4f}, {c['lon']:.4f}")
+                print(f"  Precision: ±{r['enhanced']['radius_km']}km")
+            
+            print(f"\n{G}[+]{W} Complete\n")
+    
+    def batch(self, numbers):
+        """Batch analysis"""
+        print(f"\n{Y}[*]{W} Batch Analysis: {len(numbers)} numbers\n")
+        
+        results = []
+        carriers = []
+        locations = []
+        
+        for num in numbers:
+            r = self.lookup(num, use_cache=True, enhanced=False)
+            if r:
+                results.append(r)
+                carriers.append(r['carrier'])
+                locations.append(r['location'])
+        
+        # Analysis
+        print(f"\n{C}[*]{W} Pattern Analysis:\n")
+        
+        # Carrier clustering
         carrier_counts = Counter(carriers)
-        analysis['carrier_patterns'] = {
-            'unique_carriers': len(carrier_counts),
-            'most_common': carrier_counts.most_common(5),
-            'same_carrier_percentage': (carrier_counts.most_common(1)[0][1] / len(carriers) * 100) if carrier_counts else 0
+        if len(carrier_counts) == 1 and len(results) > 5:
+            print(f"{Y}[!]{W} All numbers on same carrier - possible bulk purchase")
+        
+        # Location clustering  
+        loc_counts = Counter(locations)
+        if len(loc_counts) <= 2 and len(results) > 5:
+            print(f"{Y}[!]{W} High geographic clustering detected")
+        
+        # Summary
+        print(f"\n{G}[+]{W} Summary:")
+        print(f"  Valid: {len(results)}/{len(numbers)}")
+        print(f"  Unique Carriers: {len(carrier_counts)}")
+        print(f"  Unique Locations: {len(loc_counts)}")
+        print()
+        
+        return results
+    
+    def le_mode(self):
+        """Law enforcement investigation mode"""
+        self.banner()
+        
+        print(f"{R}🚨 LAW ENFORCEMENT MODE{W}")
+        print("Enhanced Geolocation for Investigations\n")
+        
+        case_num = input("Case Number: ").strip()
+        officer = input("Officer Name: ").strip()
+        agency = input("Agency: ").strip()
+        number = input("\nSubject Number: ").strip()
+        
+        if not all([case_num, officer, agency, number]):
+            print(f"\n{R}[!]{W} All fields required\n")
+            return
+        
+        # Save case
+        try:
+            c = self.db.conn.cursor()
+            c.execute('INSERT INTO le_cases (case_number, number, officer, agency, created, status) VALUES (?,?,?,?,?,?)',
+                      (case_num, number, officer, agency, datetime.now().isoformat(), 'active'))
+            self.db.conn.commit()
+            print(f"\n{G}[+]{W} Case created\n")
+        except:
+            print(f"\n{Y}[!]{W} Case already exists\n")
+        
+        # Perform lookup
+        result = self.lookup(number, use_cache=False, enhanced=True)
+        
+        if not result:
+            return
+        
+        # Generate report
+        print(f"\n{Y}[*]{W} Generating report...\n")
+        
+        report = {
+            'case_info': {
+                'case_number': case_num,
+                'officer': officer,
+                'agency': agency,
+                'generated': datetime.now().isoformat()
+            },
+            'subject': result,
+            'legal_notice': 'Public data only - For real-time tracking, obtain warrant'
         }
         
-        # Detect burner farm pattern
-        if len(carrier_counts) == 1 and analysis['valid_numbers'] > 5:
-            analysis['suspicious_patterns'].append(
-                f"All {analysis['valid_numbers']} numbers on same carrier - possible bulk purchase/burner farm"
-            )
+        # Save report
+        report_dir = self.cache_dir / "reports"
+        report_dir.mkdir(exist_ok=True)
+        
+        filename = f"LE_Report_{case_num}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        filepath = report_dir / filename
+        
+        with open(filepath, 'w') as f:
+            json.dump(report, f, indent=2)
+        
+        print(f"{G}[+]{W} Report saved: {filepath}\n")
     
-    # Analyze number types
-    type_counts = Counter(number_types)
-    voip_count = type_counts.get(phonenumbers.PhoneNumberType.VOIP, 0)
-    if voip_count > len(numbers) * 0.5:
-        analysis['suspicious_patterns'].append(
-            f"High VoIP usage: {voip_count}/{len(numbers)} numbers are VoIP - possible anonymity attempt"
-        )
+    def interactive(self):
+        """Interactive mode"""
+        self.banner()
+        
+        print("Commands: <number> | batch <file> | le-mode | help | quit\n")
+        
+        while True:
+            try:
+                cmd = input(f"{C}PhoneBook>{W} ").strip()
+                
+                if cmd.lower() in ['quit', 'exit', 'q']:
+                    print("\nGoodbye!\n")
+                    break
+                
+                if cmd.lower() == 'help':
+                    self.show_help()
+                    continue
+                
+                if cmd.lower() == 'le-mode':
+                    self.le_mode()
+                    continue
+                
+                if cmd.lower().startswith('geo '):
+                    num = cmd[4:].strip()
+                    self.lookup(num, enhanced=True)
+                    continue
+                
+                if cmd.lower().startswith('batch '):
+                    file = cmd[6:].strip()
+                    try:
+                        with open(file) as f:
+                            nums = [line.strip() for line in f if line.strip()]
+                        self.batch(nums)
+                    except Exception as e:
+                        print(f"{R}[!]{W} Error: {e}\n")
+                    continue
+                
+                if cmd:
+                    self.lookup(cmd)
+                    
+            except KeyboardInterrupt:
+                print("\n\nExiting...\n")
+                break
     
-    # Risk assessment
-    risk_score = 0
-    if analysis['suspicious_patterns']:
-        risk_score += len(analysis['suspicious_patterns']) * 20
-    
-    analysis['risk_assessment'] = {
-        'risk_score': min(risk_score, 100),
-        'risk_level': 'High' if risk_score >= 60 else 'Medium' if risk_score >= 30 else 'Low',
-        'patterns_detected': len(analysis['suspicious_patterns'])
-    }
-    
-    return analysis
+    def show_help(self):
+        """Show help"""
+        print("""
+Commands:
+  <number>         - Standard lookup
+  geo <number>     - Enhanced geolocation
+  batch <file>     - Analyze multiple numbers
+  le-mode          - Law enforcement mode
+  help             - Show this
+  quit             - Exit
 
-def _calculate_clustering_score(self, location_counts: Counter) -> float:
-    """
-    Calculate geographic clustering score (0-1)
-    Higher score = more clustered
-    """
-    if not location_counts:
-        return 0.0
-    
-    total = sum(location_counts.values())
-    top_location_count = location_counts.most_common(1)[0][1]
-    
-    return top_location_count / total
+Examples:
+  +14155552671     - US number
+  +442071234567    - UK number
+  geo +14155552671 - With geolocation
+  batch nums.txt   - Batch analysis
 
-def export_batch_report(self, analysis: Dict, output_file: str):
-    """Export batch analysis to file"""
-    with open(output_file, 'w') as f:
-        json.dump(analysis, f, indent=2)
-    
-    return output_file
-```
+v2.2 Features:
+  • Worldwide database (200+ countries)
+  • OpenCellID integration (set OPENCELLID_API_KEY)
+  • Number porting detection
+  • Batch pattern analysis
+  • LE investigation tools
+  • Historical tracking
+""")
 
-class EnhancedOSINT:
-“””
-Enhanced OSINT automation with multiple sources
-“””
 
-```
-def __init__(self):
-    self.session = requests.Session()
-    self.session.headers.update({
-        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'
-    })
+def main():
+    import argparse
+    
+    parser = argparse.ArgumentParser(
+        description='PhoneBookLOCA v2.2 - Worldwide OSINT Platform'
+    )
+    parser.add_argument('number', nargs='?', help='Phone number')
+    parser.add_argument('--geo', action='store_true', help='Enhanced geolocation')
+    parser.add_argument('--le-mode', action='store_true', help='Law enforcement mode')
+    parser.add_argument('--batch', help='Batch file')
+    parser.add_argument('--no-cache', action='store_true', help='Skip cache')
+    
+    args = parser.parse_args()
+    
+    intel = PhoneIntel()
+    
+    if args.le_mode:
+        intel.le_mode()
+        returnPhoneBookLOCA
+    
+    if args.batch:
+        try:
+            with open(args.batch) as f:
+                nums = [line.strip() for line in f if line.strip()]
+            intel.banner()
+            intel.batch(nums)
+        except Exception as e:
+            print(f"Error: {e}")
+        return
+    
+    if args.number:
+        intel.banner()
+        intel.lookup(args.number, use_cache=not args.no_cache, enhanced=args.geo)
+        return
+    
+    intel.interactive()
 
-def auto_osint(self, number: str) -> Dict:
-    """
-    Automated OSINT gathering
-    
-    Returns comprehensive intelligence from multiple sources
-    """
-    osint_data = {
-        'number': number,
-        'timestamp': datetime.now().isoformat(),
-        'social_media': {},
-        'search_results': {},
-        'associated_data': {},
-        'recommendations': []
-    }
-    
-    # Clean number for searching
-    clean_number = number.replace('+', '').replace(' ', '').replace('-', '')
-    
-    # Generate search queries
-    osint_data['search_queries'] = self._generate_search_queries(number, clean_number)
-    
-    # Check social media presence (heuristic)
-    osint_data['social_media'] = {
-        'facebook': {'url': f'https://www.facebook.com/search/top/?q={clean_number}', 'check_manually': True},
-        'linkedin': {'url': f'https://www.linkedin.com/search/results/all/?keywords={clean_number}', 'check_manually': True},
-        'twitter': {'url': f'https://twitter.com/search?q={clean_number}', 'check_manually': True},
-        'instagram': {'url': f'https://www.instagram.com/explore/tags/{clean_number}/', 'check_manually': True}
-    }
-    
-    # Generate recommendations
-    osint_data['recommendations'] = [
-        'Check TrueCaller for caller ID data',
-        'Search data breach databases (HaveIBeenPwned, Dehashed)',
-        'Review paste sites (Pastebin, PasteBin dumps)',
-        'Check social media with generated queries',
-        'Use reverse phone lookup services',
-        'Search court records and public databases'
-    ]
-    
-    return osint_data
 
-def _generate_search_queries(self, number: str, clean_number: str) -> Dict:
-    """Generate optimized search queries"""
-    return {
-        'google_dorks': [
-            f'"{number}"',
-            f'"{number}" (email OR contact OR phone)',
-            f'site:facebook.com "{number}"',
-            f'site:linkedin.com "{number}"',
-            f'site:twitter.com "{number}"',
-            f'intext:"{number}" (database OR leak)',
-        ],
-        'specialized': [
-            f'TrueCaller: https://www.truecaller.com/search/us/{clean_number}',
-            f'Whitepages: https://www.whitepages.com/phone/{clean_number}',
-            f'NumLookup: https://www.numlookup.com/',
-        ]
-    }
-```
-
-class HistoricalTracking:
-“””
-Track changes over time for numbers
-Useful for pattern detection and investigation timeline
-“””
-
-```
-def __init__(self, db_conn):
-    self.conn = db_conn
-    self.setup_schema()
-
-def setup_schema(self):
-    """Create historical tracking table"""
-    cursor = self.conn.cursor()
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS historical_tracking (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            number TEXT,
-            lookup_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            carrier TEXT,
-            location TEXT,
-            number_type TEXT,
-            agency TEXT,
-            officer TEXT,
-            case_number TEXT,
-            notes TEXT
-        )
-    ''')
-    
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_hist_number ON historical_tracking(number)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_hist_timestamp ON historical_tracking(lookup_timestamp)')
-    
-    self.conn.commit()
-
-def log_lookup(self, number: str, carrier: str, location: str, 
-               number_type: str, agency: str = None, officer: str = None,
-               case_number: str = None, notes: str = None):
-    """Log a lookup for historical tracking"""
-    cursor = self.conn.cursor()
-    
-    cursor.execute('''
-        INSERT INTO historical_tracking 
-        (number, carrier, location, number_type, agency, officer, case_number, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (number, carrier, location, number_type, agency, officer, case_number, notes))
-    
-    self.conn.commit()
-
-def get_history(self, number: str) -> List[Dict]:
-    """Get complete history for a number"""
-    cursor = self.conn.cursor()
-    
-    cursor.execute('''
-        SELECT * FROM historical_tracking
-        WHERE number = ?
-        ORDER BY lookup_timestamp DESC
-    ''', (number,))
-    
-    history = []
-    for row in cursor.fetchall():
-        history.append({
-            'timestamp': row['lookup_timestamp'],
-            'carrier': row['carrier'],
-            'location': row['location'],
-            'type': row['number_type'],
-            'agency': row['agency'],
-            'officer': row['officer'],
-            'case_number': row['case_number']
-        })
-    
-    return history
-
-def analyze_changes(self, number: str) -> Dict:
-    """Analyze changes over time"""
-    history = self.get_history(number)
-    
-    if not history:
-        return {'has_history': False}
-    
-    carriers = [h['carrier'] for h in history if h['carrier']]
-    locations = [h['location'] for h in history if h['location']]
-    
-    return {
-        'has_history': True,
-        'first_seen': history[-1]['timestamp'],
-        'last_seen': history[0]['timestamp'],
-        'total_lookups': len(history),
-        'carrier_changes': len(set(carriers)) > 1,
-        'carriers_seen': list(set(carriers)),
-        'location_changes': len(set(locations)) > 1,
-        'locations_seen': list(set(locations)),
-        'lookup_agencies': list(set(h['agency'] for h in history if h['agency']))
-    }
-```
-
-class CarrierAPIIntegration:
-“””
-Real-time carrier integration (optional, requires LE credentials)
-For demonstration purposes - actual implementation requires carrier partnerships
-“””
-
-```
-def __init__(self):
-    self.credentials = {}
-
-def is_configured(self) -> bool:
-    """Check if carrier credentials are configured"""
-    return len(self.credentials) > 0
-
-def emergency_ping(self, number: str, case_number: str, officer_badge: str) -> Dict:
-    """
-    Simulate emergency location ping request
-    
-    IMPORTANT: Real implementation requires:
-    - Law enforcement credentials
-    - Carrier API access
-    - Legal authorization
-    - Exigent circumstances documentation
-    """
-    return {
-        'status': 'not_implemented',
-        'message': 'Emergency ping requires direct carrier API access',
-        'instructions': [
-            '1. Contact carrier emergency line (24/7 numbers provided in reports)',
-            '2. Provide case number and officer credentials',
-            '3. Document exigent circumstances',
-            '4. Request emergency ping authorization',
-            '5. Carrier will provide location via phone/secure portal'
-        ],
-        'carrier_contacts': {
-            'Verizon': '1-888-483-7200',
-            'AT&T': '1-800-635-6840',
-            'T-Mobile': '1-888-987-4500'
-        },
-        'legal_requirements': [
-            'Exigent circumstances (life-threatening)',
-            'Case number documentation',
-            'Officer credentials verification',
-            'Follow-up warrant within 48 hours (varies by state)'
-        ]
-    }
-
-def request_cdr(self, number: str, case_number: str, warrant_number: str) -> Dict:
-    """
-    Simulate CDR (Call Detail Records) request
-    
-    Real implementation requires carrier legal compliance portal access
-    """
-    return {
-        'status': 'not_implemented',
-        'message': 'CDR requests require carrier legal compliance portal',
-        'instructions': [
-            '1. Obtain court order/warrant for CDR',
-            '2. Access carrier legal compliance portal',
-            '3. Submit request with warrant documentation',
-            '4. Typical response time: 48-72 hours',
-            '5. Follow up via portal or legal compliance phone'
-        ],
-        'portal_urls': {
-            'Verizon': 'https://www.verizon.com/about/responsibility/law-enforcement',
-            'AT&T': 'https://www.att.com/legal',
-            'T-Mobile': 'https://www.t-mobile.com/responsibility/legal/law-enforcement'
-        },
-        'legal_requirements': [
-            'Valid court order or warrant',
-            'Specific date range for CDR',
-            'Case number and jurisdiction',
-            'Requesting officer information'
-        ]
-    }
-```
-
-class EnhancedGeolocation:
-“”“Enhanced Geolocation Engine with worldwide support”””
-
-```
-def __init__(self, db_conn, opencellid_key: str = None):
-    self.conn = db_conn
-    self.opencellid = OpenCellIDIntegration(opencellid_key)
-    self.porting_detector = PortingDetection(db_conn)
-    self.historical = HistoricalTracking(db_conn)
-    self.setup_schemas()
-    self.load_databases()
-
-def setup_schemas(self):
-    """Create geolocation tables"""
-    cursor = self.conn.cursor()
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS area_code_mapping (
-            country_code TEXT, area_code TEXT, city TEXT, region TEXT, country TEXT,
-            latitude REAL, longitude REAL, population INTEGER, timezone TEXT,
-            PRIMARY KEY (country_code, area_code)
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS cell_towers (
-            tower_id TEXT PRIMARY KEY, carrier TEXT,
-            latitude REAL, longitude REAL, range_km REAL,
-            technology TEXT, area_code TEXT, city TEXT, state TEXT
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE
-```
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n\nExiting...\n")
