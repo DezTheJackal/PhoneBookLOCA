@@ -1,36 +1,68 @@
 #!/usr/bin/env python3
-# PhoneBookLOCA v2.2 - Complete & Simplified
-# Created by: DezTheJackal
-# All features, clean code, no bugs
+"""
+PhoneBookLOCA v2.3 - Worldwide Phone OSINT Platform
+Created by: DezTheJackal
+
+Usage:
+    ./PhoneBookLOCA +14155552671
+    ./PhoneBookLOCA +14155552671 --geo --osint
+    ./PhoneBookLOCA --batch numbers.txt
+    ./PhoneBookLOCA --le-mode
+    ./PhoneBookLOCA                       # interactive mode
+
+Requirements: phonenumbers, requests (core) / rich, colorama (recommended)
+See requirements.txt. Runs on Linux, macOS and Windows (Python 3.8+).
+"""
 
 import sys
+import os
 import json
 import sqlite3
 import math
-import os
 import csv
+import shutil
+import logging
+import argparse
+import platform
+import subprocess
 import webbrowser
 from pathlib import Path
 from datetime import datetime
 from collections import Counter
 
+VERSION = "2.3.0"
+
 try:
     import phonenumbers
     from phonenumbers import geocoder, carrier, timezone
     import requests
-except ImportError:
-    print("Error: Missing dependencies")
-    print("Install: pip3 install phonenumbers requests")
+except ImportError as e:
+    print("Error: Missing core dependency (%s)" % e)
+    print("Install: pip3 install -r requirements.txt")
     sys.exit(1)
 
+# --- Optional UI dependencies (tool degrades gracefully without them) ------
+
+RICH = False
 try:
     from rich.console import Console
     from rich.panel import Panel
     from rich.table import Table
     RICH = True
     console = Console()
-except:
-    RICH = False
+except ImportError:
+    console = None
+
+# colorama is required for ANSI colors to render correctly on legacy Windows
+# consoles (cmd.exe). On Linux/macOS terminals this is a harmless no-op.
+if platform.system() == "Windows":
+    try:
+        import colorama
+        colorama.init(autoreset=False)
+    except ImportError:
+        pass
+
+log = logging.getLogger("phonebookloca")
 
 # Colors
 R = '\033[91m'
@@ -41,51 +73,76 @@ C = '\033[96m'
 M = '\033[95m'
 W = '\033[0m'
 
+APP_DIR = Path(__file__).resolve().parent
+
+
+def data_file(name):
+    """Locate a bundled data file, whether run from source or an installed copy."""
+    candidates = [
+        APP_DIR / "data" / name,
+        Path(sys.prefix) / "share" / "phonebookloca" / name,
+        Path("/usr/local/share/phonebookloca") / name,
+        Path("/usr/share/phonebookloca") / name,
+        Path.home() / ".phonebookloca" / "data" / name,
+    ]
+    for c in candidates:
+        if c.exists():
+            return c
+    return None
+
+
+def haversine_km(lat1, lon1, lat2, lon2):
+    """Great-circle distance between two points, in kilometers."""
+    r = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlambda / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(a))
+
 
 class Database:
-    """Simple database handler"""
-    
+    """SQLite-backed cache, worldwide area-code table, LE case tracking and history."""
+
     def __init__(self, db_path):
         self.conn = sqlite3.connect(str(db_path))
         self.conn.row_factory = sqlite3.Row
         self.setup()
-    
+
     def setup(self):
-        """Create tables"""
         c = self.conn.cursor()
-        
-        # Cache table
+
         c.execute('''CREATE TABLE IF NOT EXISTS lookups (
             number TEXT PRIMARY KEY,
             data TEXT,
             timestamp TEXT,
             lookup_count INTEGER DEFAULT 1
         )''')
-        
-        # Worldwide database
+
         c.execute('''CREATE TABLE IF NOT EXISTS area_codes (
             country_code TEXT,
             area_code TEXT,
             city TEXT,
+            region TEXT,
             country TEXT,
             lat REAL,
             lon REAL,
             timezone TEXT,
             PRIMARY KEY (country_code, area_code)
         )''')
-        
-        # LE cases
+
         c.execute('''CREATE TABLE IF NOT EXISTS le_cases (
             id INTEGER PRIMARY KEY,
             case_number TEXT UNIQUE,
             number TEXT,
             officer TEXT,
             agency TEXT,
+            case_type TEXT,
+            priority TEXT,
             created TEXT,
             status TEXT
         )''')
-        
-        # History
+
         c.execute('''CREATE TABLE IF NOT EXISTS history (
             id INTEGER PRIMARY KEY,
             number TEXT,
@@ -93,73 +150,99 @@ class Database:
             carrier TEXT,
             location TEXT
         )''')
-        
+
         self.conn.commit()
+        self._migrate_legacy_schema()
         self.load_worldwide()
-    
+
+    def _migrate_legacy_schema(self):
+        """Add columns introduced after v2.2 if the DB pre-dates them."""
+        c = self.conn.cursor()
+        cols = {row['name'] for row in c.execute('PRAGMA table_info(area_codes)')}
+        if 'region' not in cols:
+            c.execute('ALTER TABLE area_codes ADD COLUMN region TEXT')
+        cols = {row['name'] for row in c.execute('PRAGMA table_info(le_cases)')}
+        for col in ('case_type', 'priority'):
+            if col not in cols:
+                c.execute(f'ALTER TABLE le_cases ADD COLUMN {col} TEXT')
+        self.conn.commit()
+
     def load_worldwide(self):
-        """Load worldwide area codes"""
+        """Load the worldwide area-code database from data/area_codes.json."""
         c = self.conn.cursor()
         c.execute('SELECT COUNT(*) as cnt FROM area_codes')
         if c.fetchone()['cnt'] > 0:
             return
-        
-        # Major cities worldwide (simplified list)
-        codes = [
-            ('1', '415', 'San Francisco', 'United States', 37.7749, -122.4194, 'America/Los_Angeles'),
-            ('1', '212', 'New York', 'United States', 40.7128, -74.0060, 'America/New_York'),
-            ('1', '310', 'Los Angeles', 'United States', 34.0522, -118.2437, 'America/Los_Angeles'),
-            ('1', '312', 'Chicago', 'United States', 41.8781, -87.6298, 'America/Chicago'),
-            ('1', '713', 'Houston', 'United States', 29.7604, -95.3698, 'America/Chicago'),
-            ('44', '20', 'London', 'United Kingdom', 51.5074, -0.1278, 'Europe/London'),
-            ('44', '161', 'Manchester', 'United Kingdom', 53.4808, -2.2426, 'Europe/London'),
-            ('61', '2', 'Sydney', 'Australia', -33.8688, 151.2093, 'Australia/Sydney'),
-            ('61', '3', 'Melbourne', 'Australia', -37.8136, 144.9631, 'Australia/Melbourne'),
-            ('49', '30', 'Berlin', 'Germany', 52.5200, 13.4050, 'Europe/Berlin'),
-            ('49', '89', 'Munich', 'Germany', 48.1351, 11.5820, 'Europe/Berlin'),
-            ('33', '1', 'Paris', 'France', 48.8566, 2.3522, 'Europe/Paris'),
-            ('34', '91', 'Madrid', 'Spain', 40.4168, -3.7038, 'Europe/Madrid'),
-            ('39', '06', 'Rome', 'Italy', 41.9028, 12.4964, 'Europe/Rome'),
-            ('81', '3', 'Tokyo', 'Japan', 35.6762, 139.6503, 'Asia/Tokyo'),
-            ('86', '10', 'Beijing', 'China', 39.9042, 116.4074, 'Asia/Shanghai'),
-            ('86', '21', 'Shanghai', 'China', 31.2304, 121.4737, 'Asia/Shanghai'),
-            ('91', '11', 'New Delhi', 'India', 28.6139, 77.2090, 'Asia/Kolkata'),
-            ('91', '22', 'Mumbai', 'India', 19.0760, 72.8777, 'Asia/Kolkata'),
-            ('55', '11', 'Sao Paulo', 'Brazil', -23.5505, -46.6333, 'America/Sao_Paulo'),
-            ('52', '55', 'Mexico City', 'Mexico', 19.4326, -99.1332, 'America/Mexico_City'),
-            ('7', '495', 'Moscow', 'Russia', 55.7558, 37.6173, 'Europe/Moscow'),
-            ('82', '2', 'Seoul', 'South Korea', 37.5665, 126.9780, 'Asia/Seoul'),
-        ]
-        
-        c.executemany('INSERT OR IGNORE INTO area_codes VALUES (?,?,?,?,?,?,?)', codes)
+
+        path = data_file("area_codes.json")
+        codes = []
+        if path:
+            try:
+                with open(path, encoding='utf-8') as f:
+                    codes = json.load(f).get('codes', [])
+            except (OSError, json.JSONDecodeError) as e:
+                log.warning("Could not load area_codes.json: %s", e)
+
+        if not codes:
+            # Minimal built-in fallback so the tool still works with zero data files.
+            codes = [
+                ['1', '415', 'San Francisco', 'California', 'United States', 37.7749, -122.4194, 'America/Los_Angeles'],
+                ['44', '20', 'London', 'Greater London', 'United Kingdom', 51.5074, -0.1278, 'Europe/London'],
+                ['27', '11', 'Johannesburg', 'Gauteng', 'South Africa', -26.2041, 28.0473, 'Africa/Johannesburg'],
+            ]
+
+        rows = [(cc, ac, city, region, country, lat, lon, tz)
+                for cc, ac, city, region, country, lat, lon, tz in codes]
+        c.executemany(
+            'INSERT OR IGNORE INTO area_codes VALUES (?,?,?,?,?,?,?,?)', rows
+        )
         self.conn.commit()
-    
+
     def cache_get(self, number):
-        """Get cached lookup"""
         c = self.conn.cursor()
         c.execute('SELECT * FROM lookups WHERE number = ?', (number,))
         row = c.fetchone()
-        if row:
-            return json.loads(row['data'])
-        return None
-    
+        return json.loads(row['data']) if row else None
+
     def cache_set(self, number, data):
-        """Save to cache"""
         c = self.conn.cursor()
-        c.execute('''INSERT OR REPLACE INTO lookups (number, data, timestamp, lookup_count)
-                     VALUES (?, ?, ?, COALESCE((SELECT lookup_count+1 FROM lookups WHERE number=?), 1))''',
-                  (number, json.dumps(data), datetime.now().isoformat(), number))
+        c.execute('''INSERT INTO lookups (number, data, timestamp, lookup_count)
+                     VALUES (?, ?, ?, 1)
+                     ON CONFLICT(number) DO UPDATE SET
+                        data=excluded.data,
+                        timestamp=excluded.timestamp,
+                        lookup_count=lookup_count + 1''',
+                  (number, json.dumps(data), datetime.now().isoformat()))
         self.conn.commit()
-    
+
     def history_add(self, number, carrier_name, location):
-        """Add to history"""
         c = self.conn.cursor()
         c.execute('INSERT INTO history (number, timestamp, carrier, location) VALUES (?,?,?,?)',
                   (number, datetime.now().isoformat(), carrier_name, location))
         self.conn.commit()
-    
+
+    def history_for(self, number):
+        """Aggregate historical tracking data for a number."""
+        c = self.conn.cursor()
+        c.execute('SELECT * FROM history WHERE number = ? ORDER BY timestamp', (number,))
+        rows = c.fetchall()
+        if not rows:
+            return None
+
+        carriers_seen = list(dict.fromkeys(r['carrier'] for r in rows if r['carrier']))
+        c.execute('SELECT DISTINCT agency FROM le_cases WHERE number = ? AND agency IS NOT NULL', (number,))
+        agencies = [r['agency'] for r in c.fetchall()]
+
+        return {
+            'first_seen': rows[0]['timestamp'],
+            'last_seen': rows[-1]['timestamp'],
+            'total_lookups': len(rows),
+            'carriers_seen': carriers_seen,
+            'carrier_changed': len(carriers_seen) > 1,
+            'agencies': agencies,
+        }
+
     def get_area_code(self, country_code, area_code):
-        """Get area code info"""
         c = self.conn.cursor()
         c.execute('SELECT * FROM area_codes WHERE country_code=? AND area_code=?',
                   (country_code, area_code))
@@ -167,19 +250,32 @@ class Database:
 
 
 class PhoneIntel:
-    """Main intelligence engine"""
-    
+    """Main intelligence engine."""
+
     def __init__(self):
         self.cache_dir = Path.home() / ".phonebookloca"
-        self.cache_dir.mkdir(exist_ok=True)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.db = Database(self.cache_dir / "intel.db")
         self.opencellid_key = os.getenv('OPENCELLID_API_KEY')
-    
+        self.carrier_contacts = self._load_carrier_contacts()
+
+    def _load_carrier_contacts(self):
+        path = data_file("carrier_contacts.json")
+        if not path:
+            return {}
+        try:
+            with open(path, encoding='utf-8') as f:
+                return json.load(f).get('contacts', {})
+        except (OSError, json.JSONDecodeError) as e:
+            log.warning("Could not load carrier_contacts.json: %s", e)
+            return {}
+
+    # ------------------------------------------------------------------ UI
+
     def banner(self):
-        """Display banner"""
         if RICH:
             b = Panel.fit(
-                "[bold magenta]PhoneBookLOCA v2.2[/bold magenta]\n"
+                f"[bold magenta]PhoneBookLOCA v{VERSION}[/bold magenta]\n"
                 "[cyan]Worldwide OSINT Platform[/cyan]\n\n"
                 "[yellow]Created by: DezTheJackal[/yellow]",
                 title="Phone Intelligence",
@@ -187,89 +283,95 @@ class PhoneIntel:
             )
             console.print("\n", b, "\n")
         else:
-            print(f"\n{C}╔════════════════════════════════╗{W}")
-            print(f"{C}║  PhoneBookLOCA v2.2            ║{W}")
-            print(f"{C}║  Worldwide OSINT Platform      ║{W}")
-            print(f"{C}╚════════════════════════════════╝{W}")
+            print(f"\n{C}+--------------------------------+{W}")
+            print(f"{C}|  PhoneBookLOCA v{VERSION}            |{W}")
+            print(f"{C}|  Worldwide OSINT Platform      |{W}")
+            print(f"{C}+--------------------------------+{W}")
             print(f"\n{Y}Created by: DezTheJackal{W}\n")
-    
-    def lookup(self, number, use_cache=True, enhanced=False):
-        """Main lookup function"""
-        
+
+    # -------------------------------------------------------------- lookup
+
+    def lookup(self, number, use_cache=True, enhanced=False, osint=False):
+        """Main lookup function."""
+        number = number.strip()
         print(f"\n{Y}[*]{W} Target: {number}")
-        
-        # Check cache
+
         if use_cache:
             cached = self.db.cache_get(number)
             if cached:
                 print(f"{G}[+]{W} Using cached data\n")
                 self.display(cached)
                 return cached
-        
+
         print(f"{Y}[*]{W} Analyzing...\n")
-        
+
         try:
             parsed = phonenumbers.parse(number, None)
-            
-            if not phonenumbers.is_valid_number(parsed):
-                print(f"{R}[!]{W} Invalid number\n")
-                return None
-            
-            # Basic info
-            location = geocoder.description_for_number(parsed, "en") or "Unknown"
-            carrier_name = carrier.name_for_number(parsed, "en") or "Unknown"
-            tz = timezone.time_zones_for_number(parsed) or ["Unknown"]
-            
-            results = {
-                "number": number,
-                "country_code": f"+{parsed.country_code}",
-                "location": location,
-                "carrier": carrier_name,
-                "type": self.get_type(parsed),
-                "timezone": tz,
-                "valid": True,
-                "timestamp": datetime.now().isoformat()
-            }
-            
-            # Enhanced features
-            if enhanced:
-                results['enhanced'] = self.enhance(number, parsed, location)
-            
-            # Save to cache and history
-            self.db.cache_set(number, results)
-            self.db.history_add(number, carrier_name, location)
-            
-            # Display
-            self.display(results)
-            
-            return results
-            
-        except Exception as e:
-            print(f"{R}[!]{W} Error: {e}\n")
+        except phonenumbers.NumberParseException as e:
+            print(f"{R}[!]{W} Could not parse number: {e}\n")
             return None
-    
+
+        if not phonenumbers.is_valid_number(parsed):
+            print(f"{R}[!]{W} Invalid number\n")
+            return None
+
+        location = geocoder.description_for_number(parsed, "en") or "Unknown"
+        carrier_name = carrier.name_for_number(parsed, "en") or "Unknown"
+        tz = list(timezone.time_zones_for_number(parsed)) or ["Unknown"]
+
+        results = {
+            "number": number,
+            "country_code": f"+{parsed.country_code}",
+            "location": location,
+            "carrier": carrier_name,
+            "type": self.get_type(parsed),
+            "timezone": tz,
+            "valid": True,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+        if enhanced:
+            results['enhanced'] = self.enhance(number, parsed, location)
+
+        if osint:
+            results['osint'] = self.osint_intel(number, parsed)
+
+        self.db.cache_set(number, results)
+        self.db.history_add(number, carrier_name, location)
+
+        self.display(results)
+        return results
+
+    # ------------------------------------------------------------ enhance
+
     def enhance(self, number, parsed, location):
-        """Enhanced geolocation and features"""
+        """Enhanced geolocation, porting analysis, map link and history."""
         enhanced = {}
-        
-        # Area code lookup
+
         country_code = str(parsed.country_code)
         national = str(parsed.national_number)
-        area_code = national[:3] if len(national) >= 3 else ""
-        
-        if area_code:
-            area_info = self.db.get_area_code(country_code, area_code)
-            if area_info:
-                enhanced['coordinates'] = {
-                    'lat': area_info['lat'],
-                    'lon': area_info['lon'],
-                    'city': area_info['city'],
-                    'country': area_info['country']
-                }
-                enhanced['precision'] = 'area_code'
-                enhanced['radius_km'] = 50
-        
-        # OpenCellID if configured
+        # Area-code length varies by country (UK "20" vs US "415"), so try the
+        # longest-to-shortest prefix and take the first match instead of
+        # assuming a fixed 3-digit code.
+        area_info = None
+        for prefix_len in (4, 3, 2, 1):
+            if len(national) >= prefix_len:
+                area_info = self.db.get_area_code(country_code, national[:prefix_len])
+                if area_info:
+                    break
+
+        precision = None
+        if area_info:
+            enhanced['coordinates'] = {
+                'lat': area_info['lat'],
+                'lon': area_info['lon'],
+                'city': area_info['city'],
+                'region': area_info['region'],
+                'country': area_info['country'],
+            }
+            precision = 'area_code'
+            enhanced['radius_km'] = 50
+
         if self.opencellid_key and enhanced.get('coordinates'):
             towers = self.get_opencellid(
                 enhanced['coordinates']['lat'],
@@ -277,90 +379,165 @@ class PhoneIntel:
             )
             if towers:
                 enhanced['cell_towers'] = len(towers)
-        
-        # Porting detection
+                enhanced['nearest_tower_km'] = round(towers[0].get('_distance_km', 0), 1)
+                precision = 'cell_tower'
+                enhanced['radius_km'] = 5
+
+        enhanced['precision'] = precision or 'country'
+        enhanced['confidence'] = {
+            'cell_tower': 90, 'area_code': 70, 'country': 30,
+        }.get(enhanced['precision'], 30)
+
+        if enhanced.get('coordinates'):
+            lat, lon = enhanced['coordinates']['lat'], enhanced['coordinates']['lon']
+            enhanced['map_link'] = f"https://www.google.com/maps?q={lat},{lon}"
+
         enhanced['porting'] = self.check_porting(number, parsed)
-        
+        enhanced['history'] = self.db.history_for(number)
+
         return enhanced
-    
+
     def check_porting(self, number, parsed):
-        """Simple porting detection"""
+        """Porting likelihood with a simple weighted confidence score."""
         carrier_name = carrier.name_for_number(parsed, "en") or ""
         num_type = phonenumbers.number_type(parsed)
-        
-        # Check if VoIP (often ported)
-        if num_type == 6:
-            return {"likely_ported": True, "reason": "VoIP number"}
-        
-        # Check if MVNO
-        mvnos = ['mint', 'boost', 'cricket', 'metro', 'visible']
+
+        indicators = []
+        confidence = 0
+
+        if num_type == phonenumbers.PhoneNumberType.VOIP:
+            indicators.append("VoIP number")
+            confidence += 45
+
+        mvnos = ['mint', 'boost', 'cricket', 'metro', 'visible', 'google fi', 'ting']
         if any(m in carrier_name.lower() for m in mvnos):
-            return {"likely_ported": True, "reason": "MVNO carrier"}
-        
-        return {"likely_ported": False}
-    
+            indicators.append("MVNO carrier detected")
+            confidence += 35
+
+        history = self.db.history_for(number)
+        if history and history['carrier_changed']:
+            indicators.append(
+                f"Carrier changed historically: {', '.join(history['carriers_seen'])}"
+            )
+            confidence += 30
+
+        confidence = min(confidence, 100)
+        return {
+            "likely_ported": confidence >= 40,
+            "confidence": confidence,
+            "indicators": indicators or ["No porting indicators found"],
+        }
+
     def get_opencellid(self, lat, lon):
-        """Query OpenCellID for nearby towers"""
+        """Query OpenCellID for nearby towers, sorted by distance."""
         if not self.opencellid_key:
             return []
-        
         try:
-            url = "https://opencellid.org/cell/getInArea"
-            params = {
-                'key': self.opencellid_key,
-                'lat': lat,
-                'lon': lon,
-                'radius': 5000,
-                'format': 'json'
-            }
-            resp = requests.get(url, params=params, timeout=10)
-            if resp.status_code == 200:
-                data = resp.json()
-                return data.get('cells', [])[:5]
-        except:
-            pass
-        return []
-    
+            resp = requests.get(
+                "https://opencellid.org/cell/getInArea",
+                params={'key': self.opencellid_key, 'lat': lat, 'lon': lon,
+                        'radius': 5000, 'format': 'json'},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            cells = resp.json().get('cells', [])
+            for cell in cells:
+                try:
+                    cell['_distance_km'] = haversine_km(lat, lon, float(cell['lat']), float(cell['lon']))
+                except (KeyError, ValueError, TypeError):
+                    cell['_distance_km'] = 0
+            cells.sort(key=lambda c: c.get('_distance_km', 0))
+            return cells[:5]
+        except requests.RequestException as e:
+            log.warning("OpenCellID request failed: %s", e)
+            return []
+
+    # -------------------------------------------------------------- osint
+
+    def osint_intel(self, number, parsed):
+        """Generate passive OSINT leads: dorks, lookup URLs, social checks, breach hints."""
+        digits = "".join(ch for ch in number if ch.isdigit())
+        national = str(parsed.national_number)
+
+        intel = {
+            'search_dorks': [
+                f'"{number}"',
+                f'"{national}" site:facebook.com',
+                f'"{national}" site:linkedin.com',
+                f'intext:"{number}" filetype:pdf',
+            ],
+            'lookup_services': [
+                f"https://www.truecaller.com/search/{parsed.country_code}/{national}",
+                f"https://sync.me/search/?number={digits}",
+                f"https://www.whitepages.com/phone/{digits}",
+            ],
+            'breach_check': f"https://haveibeenpwned.com/  (search {number} manually - no public API for phone numbers)",
+            'go_scraper': self._run_go_scraper(number),
+        }
+        return intel
+
+    def _run_go_scraper(self, number):
+        """Invoke the optional compiled Go scraper (scraper.go) if it is present on PATH
+        or already built alongside this script. Cross-platform (scraper.exe on Windows)."""
+        binary = "scraper.exe" if platform.system() == "Windows" else "scraper"
+        found_on_path = shutil.which(binary)
+        candidates = [APP_DIR / binary] + ([Path(found_on_path)] if found_on_path else [])
+        for path in candidates:
+            if path.exists():
+                try:
+                    proc = subprocess.run(
+                        [str(path), number], capture_output=True, text=True, timeout=30
+                    )
+                    if proc.returncode == 0 and proc.stdout.strip():
+                        return json.loads(proc.stdout)
+                except (subprocess.SubprocessError, json.JSONDecodeError, OSError) as e:
+                    log.warning("Go scraper failed: %s", e)
+        return {
+            "status": "not built",
+            "note": "Build scraper.go for live web OSINT: go build -o scraper scraper.go "
+                    "(scraper.exe on Windows)",
+        }
+
     def get_type(self, parsed):
-        """Get number type"""
         types = {
             0: "Fixed Line", 1: "Mobile", 2: "Fixed/Mobile",
             3: "Toll Free", 4: "Premium", 5: "Shared Cost",
             6: "VoIP", 7: "Personal", 8: "Pager",
-            9: "UAN", 10: "Voicemail"
+            9: "UAN", 10: "Voicemail",
         }
         return types.get(phonenumbers.number_type(parsed), "Unknown")
-    
+
+    def recommendations(self, r):
+        """Investigative next-step suggestions based on what was found."""
+        recs = []
+        if r.get('type') == 'VoIP':
+            recs.append("VoIP number - request subscriber info from the VoIP provider, not just the carrier")
+        enh = r.get('enhanced', {})
+        if enh.get('porting', {}).get('likely_ported'):
+            recs.append("Likely ported - do not rely on area code alone for location; request porting history (LNP) from carrier")
+        if not enh.get('coordinates'):
+            recs.append("No area-code match on file - add coverage to data/area_codes.json or rely on carrier subpoena for location")
+        if r.get('carrier') in self.carrier_contacts:
+            recs.append(f"Legal contact on file for {r['carrier']} - see report for portal")
+        if not recs:
+            recs.append("No additional automated leads - proceed with standard legal process (CDR/subpoena) if required")
+        return recs
+
+    # ------------------------------------------------------------- display
+
     def display(self, r):
-        """Display results"""
         if RICH:
-            info = f"[cyan]Country:[/cyan] {r['location']} ({r['country_code']})\n"
-            info += f"[cyan]Carrier:[/cyan] {r['carrier']}\n"
-            info += f"[cyan]Type:[/cyan] {r['type']}\n"
-            info += f"[cyan]Timezone:[/cyan] {', '.join(r['timezone'])}"
-            
-            panel = Panel.fit(info, title="Basic Intelligence", border_style="green")
-            console.print(panel)
-            
+            info = (f"[cyan]Country:[/cyan] {r['location']} ({r['country_code']})\n"
+                    f"[cyan]Carrier:[/cyan] {r['carrier']}\n"
+                    f"[cyan]Type:[/cyan] {r['type']}\n"
+                    f"[cyan]Timezone:[/cyan] {', '.join(r['timezone'])}")
+            console.print(Panel.fit(info, title="Basic Intelligence", border_style="green"))
+
             if r.get('enhanced'):
-                e = r['enhanced']
-                if e.get('coordinates'):
-                    c = e['coordinates']
-                    geo = f"[cyan]City:[/cyan] {c['city']}\n"
-                    geo += f"[cyan]Country:[/cyan] {c['country']}\n"
-                    geo += f"[cyan]Coordinates:[/cyan] {c['lat']:.4f}, {c['lon']:.4f}\n"
-                    geo += f"[cyan]Precision:[/cyan] ±{e['radius_km']}km"
-                    
-                    if e.get('cell_towers'):
-                        geo += f"\n[cyan]Cell Towers:[/cyan] {e['cell_towers']} nearby"
-                    
-                    console.print("\n")
-                    panel = Panel.fit(geo, title="Enhanced Geolocation", border_style="blue")
-                    console.print(panel)
-                
-                if e.get('porting', {}).get('likely_ported'):
-                    console.print(f"\n[yellow]⚠️  Porting detected: {e['porting']['reason']}[/yellow]")
-            
+                self._display_enhanced_rich(r['enhanced'])
+            if r.get('osint'):
+                self._display_osint_rich(r['osint'])
+
             console.print(f"\n[green][+][/green] Complete\n")
         else:
             print(f"{G}[+]{W} Results:\n")
@@ -368,217 +545,377 @@ class PhoneIntel:
             print(f"  Carrier: {r['carrier']}")
             print(f"  Type: {r['type']}")
             print(f"  Timezone: {', '.join(r['timezone'])}")
-            
-            if r.get('enhanced', {}).get('coordinates'):
-                c = r['enhanced']['coordinates']
-                print(f"\n{C}[*]{W} Enhanced Geolocation:")
-                print(f"  City: {c['city']}")
-                print(f"  Coordinates: {c['lat']:.4f}, {c['lon']:.4f}")
-                print(f"  Precision: ±{r['enhanced']['radius_km']}km")
-            
+
+            if r.get('enhanced'):
+                self._display_enhanced_plain(r['enhanced'])
+            if r.get('osint'):
+                self._display_osint_plain(r['osint'])
+
             print(f"\n{G}[+]{W} Complete\n")
-    
-    def batch(self, numbers):
-        """Batch analysis"""
+
+    def _display_enhanced_plain(self, e):
+        print(f"\n{C}[*]{W} Enhanced Geolocation:")
+        print(f"  Precision: {e['precision']} (confidence: {e['confidence']}%)")
+        if e.get('coordinates'):
+            c = e['coordinates']
+            print(f"  City: {c['city']}, {c.get('region', '')}")
+            print(f"  Coordinates: {c['lat']:.4f}, {c['lon']:.4f}  (+/-{e['radius_km']}km)")
+            if e.get('map_link'):
+                print(f"  Map: {e['map_link']}")
+        if e.get('cell_towers'):
+            print(f"  Cell Towers: {e['cell_towers']} nearby (nearest ~{e.get('nearest_tower_km')}km)")
+
+        p = e.get('porting', {})
+        if p:
+            flag = f"{Y}Yes{W}" if p['likely_ported'] else "No"
+            print(f"\n{Y}[!]{W} Porting Analysis: {flag} ({p['confidence']}% confidence)")
+            for ind in p['indicators']:
+                print(f"    - {ind}")
+
+        h = e.get('history')
+        if h:
+            print(f"\n{C}[*]{W} Historical Data:")
+            print(f"  First seen: {h['first_seen']}")
+            print(f"  Last seen:  {h['last_seen']}")
+            print(f"  Total lookups: {h['total_lookups']}")
+            print(f"  Carrier changes: {'Yes' if h['carrier_changed'] else 'No'}")
+
+    def _display_enhanced_rich(self, e):
+        geo = f"[cyan]Precision:[/cyan] {e['precision']} ({e['confidence']}% confidence)\n"
+        if e.get('coordinates'):
+            c = e['coordinates']
+            geo += (f"[cyan]City:[/cyan] {c['city']}, {c.get('region', '')}\n"
+                    f"[cyan]Coordinates:[/cyan] {c['lat']:.4f}, {c['lon']:.4f}\n"
+                    f"[cyan]Precision radius:[/cyan] +/-{e['radius_km']}km")
+        if e.get('cell_towers'):
+            geo += f"\n[cyan]Cell Towers:[/cyan] {e['cell_towers']} nearby"
+        console.print("\n", Panel.fit(geo, title="Enhanced Geolocation", border_style="blue"))
+
+        p = e.get('porting', {})
+        if p:
+            flag = "[yellow]Yes[/yellow]" if p['likely_ported'] else "No"
+            body = f"Likely ported: {flag} ({p['confidence']}%)\n" + "\n".join(f"- {i}" for i in p['indicators'])
+            console.print(Panel.fit(body, title="Porting Analysis", border_style="yellow"))
+
+        h = e.get('history')
+        if h:
+            body = (f"First seen: {h['first_seen']}\nLast seen: {h['last_seen']}\n"
+                    f"Total lookups: {h['total_lookups']}\nCarrier changes: {h['carrier_changed']}")
+            console.print(Panel.fit(body, title="Historical Data", border_style="cyan"))
+
+    def _display_osint_plain(self, o):
+        print(f"\n{M}[*]{W} OSINT Leads:")
+        print("  Search dorks:")
+        for d in o['search_dorks'][:3]:
+            print(f"    {d}")
+        print("  Lookup services:")
+        for u in o['lookup_services']:
+            print(f"    {u}")
+        gs = o.get('go_scraper', {})
+        if gs.get('status') == 'not built':
+            print(f"  {Y}[i]{W} {gs['note']}")
+
+    def _display_osint_rich(self, o):
+        body = "Search dorks:\n" + "\n".join(o['search_dorks'][:3])
+        body += "\n\nLookup services:\n" + "\n".join(o['lookup_services'])
+        console.print(Panel.fit(body, title="OSINT Leads", border_style="magenta"))
+
+    # --------------------------------------------------------------- batch
+
+    def batch(self, numbers, output=None):
+        """Batch analysis with clustering, VoIP ratio and a 0-100 risk score."""
         print(f"\n{Y}[*]{W} Batch Analysis: {len(numbers)} numbers\n")
-        
-        results = []
-        carriers = []
-        locations = []
-        
+
+        results, carriers, locations, voip_count = [], [], [], 0
         for num in numbers:
             r = self.lookup(num, use_cache=True, enhanced=False)
             if r:
                 results.append(r)
                 carriers.append(r['carrier'])
                 locations.append(r['location'])
-        
-        # Analysis
-        print(f"\n{C}[*]{W} Pattern Analysis:\n")
-        
-        # Carrier clustering
+                if r['type'] == 'VoIP':
+                    voip_count += 1
+
         carrier_counts = Counter(carriers)
-        if len(carrier_counts) == 1 and len(results) > 5:
-            print(f"{Y}[!]{W} All numbers on same carrier - possible bulk purchase")
-        
-        # Location clustering  
         loc_counts = Counter(locations)
+        n = len(results) or 1
+
+        patterns = []
+        risk_score = 0
+
+        same_carrier_pct = (carrier_counts.most_common(1)[0][1] / n * 100) if carrier_counts else 0
+        if len(carrier_counts) == 1 and len(results) > 5:
+            patterns.append("All numbers on same carrier - possible bulk purchase")
+            risk_score += 30
+
+        clustering_score = (1 - (len(loc_counts) / n)) if n else 0
         if len(loc_counts) <= 2 and len(results) > 5:
-            print(f"{Y}[!]{W} High geographic clustering detected")
-        
-        # Summary
+            patterns.append(f"High geographic clustering: {len(results)} numbers in {len(loc_counts)} locations")
+            risk_score += 30
+
+        voip_pct = (voip_count / n * 100) if results else 0
+        if voip_pct > 50:
+            patterns.append(f"High VoIP usage: {voip_count}/{len(results)} numbers are VoIP")
+            risk_score += 25
+
+        risk_score = min(risk_score, 100)
+        risk_level = "High" if risk_score >= 60 else "Medium" if risk_score >= 30 else "Low"
+
+        print(f"\n{C}[*]{W} Pattern Analysis:\n")
+        for p in patterns:
+            print(f"{Y}[!]{W} {p}")
+
         print(f"\n{G}[+]{W} Summary:")
         print(f"  Valid: {len(results)}/{len(numbers)}")
         print(f"  Unique Carriers: {len(carrier_counts)}")
         print(f"  Unique Locations: {len(loc_counts)}")
+        print(f"  Risk Level: {risk_level} ({risk_score}/100)")
         print()
-        
-        return results
-    
+
+        report = {
+            "generated": datetime.now().isoformat(),
+            "total_numbers": len(numbers),
+            "valid_numbers": len(results),
+            "geographic_clustering": {
+                "unique_locations": len(loc_counts),
+                "most_common": loc_counts.most_common(5),
+                "clustering_score": round(clustering_score, 2),
+            },
+            "carrier_patterns": {
+                "unique_carriers": len(carrier_counts),
+                "same_carrier_percentage": round(same_carrier_pct, 1),
+            },
+            "voip_percentage": round(voip_pct, 1),
+            "risk_assessment": {
+                "risk_score": risk_score,
+                "risk_level": risk_level,
+                "patterns_detected": len(patterns),
+            },
+            "suspicious_patterns": patterns,
+            "numbers": results,
+        }
+
+        out_path = Path(output) if output else Path.cwd() / f"batch_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        try:
+            with open(out_path, 'w', encoding='utf-8') as f:
+                json.dump(report, f, indent=2)
+            print(f"{G}[+]{W} Batch report saved: {out_path}\n")
+        except OSError as e:
+            print(f"{R}[!]{W} Could not save report: {e}\n")
+
+        return report
+
+    # ------------------------------------------------------------- LE mode
+
     def le_mode(self):
-        """Law enforcement investigation mode"""
         self.banner()
-        
-        print(f"{R}🚨 LAW ENFORCEMENT MODE{W}")
+        print(f"{R}[LE] LAW ENFORCEMENT MODE{W}")
         print("Enhanced Geolocation for Investigations\n")
-        
+
         case_num = input("Case Number: ").strip()
         officer = input("Officer Name: ").strip()
         agency = input("Agency: ").strip()
+        case_type = input("Case Type (missing_person/trafficking/fraud/other) [other]: ").strip() or "other"
+        priority = input("Priority (low/medium/high) [medium]: ").strip() or "medium"
         number = input("\nSubject Number: ").strip()
-        
+
         if not all([case_num, officer, agency, number]):
             print(f"\n{R}[!]{W} All fields required\n")
             return
-        
-        # Save case
+
         try:
             c = self.db.conn.cursor()
-            c.execute('INSERT INTO le_cases (case_number, number, officer, agency, created, status) VALUES (?,?,?,?,?,?)',
-                      (case_num, number, officer, agency, datetime.now().isoformat(), 'active'))
+            c.execute('''INSERT INTO le_cases (case_number, number, officer, agency, case_type, priority, created, status)
+                         VALUES (?,?,?,?,?,?,?,?)''',
+                      (case_num, number, officer, agency, case_type, priority,
+                       datetime.now().isoformat(), 'active'))
             self.db.conn.commit()
             print(f"\n{G}[+]{W} Case created\n")
-        except:
-            print(f"\n{Y}[!]{W} Case already exists\n")
-        
-        # Perform lookup
-        result = self.lookup(number, use_cache=False, enhanced=True)
-        
+        except sqlite3.IntegrityError:
+            print(f"\n{Y}[!]{W} Case number already exists\n")
+
+        result = self.lookup(number, use_cache=False, enhanced=True, osint=True)
         if not result:
             return
-        
-        # Generate report
-        print(f"\n{Y}[*]{W} Generating report...\n")
-        
-        report = {
-            'case_info': {
-                'case_number': case_num,
-                'officer': officer,
-                'agency': agency,
-                'generated': datetime.now().isoformat()
-            },
-            'subject': result,
-            'legal_notice': 'Public data only - For real-time tracking, obtain warrant'
+
+        result['case_info'] = {
+            'case_number': case_num, 'officer': officer, 'agency': agency,
+            'case_type': case_type, 'priority': priority,
+            'generated': datetime.now().isoformat(),
         }
-        
-        # Save report
+        result['recommendations'] = self.recommendations(result)
+        result['legal_notice'] = 'Public data only - for real-time tracking or subscriber records, obtain a warrant/subpoena'
+        if result['carrier'] in self.carrier_contacts:
+            result['carrier_legal_contact'] = self.carrier_contacts[result['carrier']]
+
+        print(f"\n{Y}[*]{W} Export format: 1) JSON  2) CSV  3) HTML  4) All  5) Skip")
+        choice = input("Choice [1]: ").strip() or "1"
+
         report_dir = self.cache_dir / "reports"
         report_dir.mkdir(exist_ok=True)
-        
-        filename = f"LE_Report_{case_num}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        filepath = report_dir / filename
-        
-        with open(filepath, 'w') as f:
+        stem = report_dir / f"LE_Report_{case_num}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+        if choice in ("1", "4"):
+            self._export_json(result, stem.with_suffix('.json'))
+        if choice in ("2", "4"):
+            self._export_csv(result, stem.with_suffix('.csv'))
+        if choice in ("3", "4"):
+            self._export_html(result, stem.with_suffix('.html'))
+
+    def _export_json(self, report, path):
+        with open(path, 'w', encoding='utf-8') as f:
             json.dump(report, f, indent=2)
-        
-        print(f"{G}[+]{W} Report saved: {filepath}\n")
-    
+        print(f"{G}[+]{W} JSON report saved: {path}")
+
+    def _export_csv(self, report, path):
+        flat = {
+            'number': report.get('number'), 'country_code': report.get('country_code'),
+            'location': report.get('location'), 'carrier': report.get('carrier'),
+            'type': report.get('type'), 'case_number': report.get('case_info', {}).get('case_number'),
+            'officer': report.get('case_info', {}).get('officer'),
+            'agency': report.get('case_info', {}).get('agency'),
+        }
+        with open(path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=list(flat.keys()))
+            writer.writeheader()
+            writer.writerow(flat)
+        print(f"{G}[+]{W} CSV report saved: {path}")
+
+    def _export_html(self, report, path):
+        rows = "".join(f"<tr><th>{k}</th><td>{v}</td></tr>" for k, v in report.items()
+                        if not isinstance(v, (dict, list)))
+        recs = "".join(f"<li>{r}</li>" for r in report.get('recommendations', []))
+        html = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>PhoneBookLOCA Report - {report.get('number')}</title>
+<style>body{{font-family:monospace;background:#0d0d0d;color:#0ff;padding:2em}}
+table{{border-collapse:collapse}}th,td{{border:1px solid #0ff3;padding:6px 12px;text-align:left}}
+h1{{color:#f0f}}</style></head><body>
+<h1>PhoneBookLOCA Investigation Report</h1>
+<table>{rows}</table>
+<h2>Recommendations</h2><ul>{recs}</ul>
+<p><em>{report.get('legal_notice', '')}</em></p>
+</body></html>"""
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(html)
+        print(f"{G}[+]{W} HTML report saved: {path}")
+
+    # --------------------------------------------------------- interactive
+
     def interactive(self):
-        """Interactive mode"""
         self.banner()
-        
-        print("Commands: <number> | batch <file> | le-mode | help | quit\n")
-        
+        print("Commands: <number> | geo <number> | osint <number> | batch <file> | le-mode | help | quit\n")
+
         while True:
             try:
                 cmd = input(f"{C}PhoneBook>{W} ").strip()
-                
-                if cmd.lower() in ['quit', 'exit', 'q']:
+                low = cmd.lower()
+
+                if low in ('quit', 'exit', 'q'):
                     print("\nGoodbye!\n")
                     break
-                
-                if cmd.lower() == 'help':
+                if low == 'help':
                     self.show_help()
                     continue
-                
-                if cmd.lower() == 'le-mode':
+                if low == 'le-mode':
                     self.le_mode()
                     continue
-                
-                if cmd.lower().startswith('geo '):
-                    num = cmd[4:].strip()
-                    self.lookup(num, enhanced=True)
+                if low.startswith('geo '):
+                    self.lookup(cmd[4:].strip(), enhanced=True)
                     continue
-                
-                if cmd.lower().startswith('batch '):
+                if low.startswith('osint '):
+                    self.lookup(cmd[6:].strip(), enhanced=True, osint=True)
+                    continue
+                if low.startswith('batch '):
                     file = cmd[6:].strip()
                     try:
-                        with open(file) as f:
+                        with open(file, encoding='utf-8') as f:
                             nums = [line.strip() for line in f if line.strip()]
                         self.batch(nums)
-                    except Exception as e:
+                    except OSError as e:
                         print(f"{R}[!]{W} Error: {e}\n")
                     continue
-                
                 if cmd:
                     self.lookup(cmd)
-                    
             except KeyboardInterrupt:
                 print("\n\nExiting...\n")
                 break
-    
+
     def show_help(self):
-        """Show help"""
-        print("""
+        print(f"""
 Commands:
   <number>         - Standard lookup
-  geo <number>     - Enhanced geolocation
-  batch <file>     - Analyze multiple numbers
-  le-mode          - Law enforcement mode
+  geo <number>     - Enhanced geolocation + porting + history
+  osint <number>   - Passive OSINT leads (dorks, lookup URLs, optional Go scraper)
+  batch <file>     - Analyze multiple numbers, saves a risk-scored JSON report
+  le-mode          - Law enforcement case mode (JSON/CSV/HTML export)
   help             - Show this
   quit             - Exit
 
-Examples:
-  +14155552671     - US number
-  +442071234567    - UK number
-  geo +14155552671 - With geolocation
-  batch nums.txt   - Batch analysis
-
-v2.2 Features:
-  • Worldwide database (200+ countries)
-  • OpenCellID integration (set OPENCELLID_API_KEY)
-  • Number porting detection
-  • Batch pattern analysis
-  • LE investigation tools
-  • Historical tracking
+v{VERSION} additions:
+  - Confidence-scored porting detection and geolocation precision
+  - Risk-scored batch reports saved to disk automatically
+  - Passive OSINT lead generation (+ optional compiled Go scraper)
+  - Historical carrier/location tracking surfaced in reports
+  - CSV/HTML export alongside JSON for LE reports
+  - Cross-platform: Windows, macOS, Linux
 """)
 
 
-def main():
-    import argparse
-    
+def build_arg_parser():
     parser = argparse.ArgumentParser(
-        description='PhoneBookLOCA v2.2 - Worldwide OSINT Platform'
+        description=f'PhoneBookLOCA v{VERSION} - Worldwide OSINT Platform'
     )
-    parser.add_argument('number', nargs='?', help='Phone number')
-    parser.add_argument('--geo', action='store_true', help='Enhanced geolocation')
-    parser.add_argument('--le-mode', action='store_true', help='Law enforcement mode')
-    parser.add_argument('--batch', help='Batch file')
-    parser.add_argument('--no-cache', action='store_true', help='Skip cache')
-    
+    parser.add_argument('number', nargs='?', help='Phone number in E.164 format, e.g. +14155552671')
+    parser.add_argument('--geo', action='store_true', help='Enhanced geolocation, porting and history')
+    parser.add_argument('--osint', action='store_true', help='Passive OSINT lead generation')
+    parser.add_argument('--le-mode', action='store_true', help='Law enforcement case mode')
+    parser.add_argument('--batch', metavar='FILE', help='Batch-analyze numbers from a file (one per line)')
+    parser.add_argument('--no-cache', action='store_true', help='Skip the local cache')
+    parser.add_argument('--output', '-o', metavar='FILE', help='Save the result/report to this path')
+    parser.add_argument('--verbose', '-v', action='store_true', help='Verbose diagnostic logging')
+    parser.add_argument('--version', action='version', version=f'PhoneBookLOCA v{VERSION}')
+    return parser
+
+
+def main():
+    parser = build_arg_parser()
     args = parser.parse_args()
-    
+
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.WARNING,
+        format='%(levelname)s: %(message)s',
+    )
+
     intel = PhoneIntel()
-    
+
     if args.le_mode:
         intel.le_mode()
-        returnPhoneBookLOCA
-    
+        return
+
     if args.batch:
         try:
-            with open(args.batch) as f:
+            with open(args.batch, encoding='utf-8') as f:
                 nums = [line.strip() for line in f if line.strip()]
-            intel.banner()
-            intel.batch(nums)
-        except Exception as e:
+        except OSError as e:
             print(f"Error: {e}")
+            sys.exit(1)
+        intel.banner()
+        intel.batch(nums, output=args.output)
         return
-    
+
     if args.number:
         intel.banner()
-        intel.lookup(args.number, use_cache=not args.no_cache, enhanced=args.geo)
+        result = intel.lookup(args.number, use_cache=not args.no_cache,
+                               enhanced=args.geo, osint=args.osint)
+        if result and args.output:
+            try:
+                with open(args.output, 'w', encoding='utf-8') as f:
+                    json.dump(result, f, indent=2)
+                print(f"{G}[+]{W} Saved to {args.output}\n")
+            except OSError as e:
+                print(f"{R}[!]{W} Could not write {args.output}: {e}\n")
         return
-    
+
     intel.interactive()
 
 
@@ -587,3 +924,8 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         print("\n\nExiting...\n")
+    except Exception as e:  # noqa: BLE001 - top-level guard so the tool never hard-crashes
+        log.debug("Unhandled exception", exc_info=True)
+        print(f"\n{R}[!] Fatal error:{W} {e}")
+        print("Run with --verbose for a full traceback.\n")
+        sys.exit(1)

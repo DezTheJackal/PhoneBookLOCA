@@ -14,6 +14,12 @@ import (
 
 // PhoneBookLOCA v1.1 - OSINT Web Scraper
 // Go scraper maintained by: 0xb0rn3 | oxbv1
+//
+// Build (any OS): go build -o scraper scraper.go        (Linux/macOS)
+//                 go build -o scraper.exe scraper.go     (Windows)
+// The main PhoneBookLOCA script auto-detects and calls this binary from the
+// `osint` command / --osint flag if it has been built and placed next to it
+// (or is on PATH). It is optional - the tool works fully without it.
 
 // Result represents a single search result
 type Result struct {

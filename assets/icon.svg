@@ -1,0 +1,42 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0a0014"/>
+      <stop offset="55%" stop-color="#0d0221"/>
+      <stop offset="100%" stop-color="#050014"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#00f0ff"/>
+      <stop offset="100%" stop-color="#ff00e6"/>
+    </linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M 32 0 L 0 0 0 32" fill="none" stroke="#1d0d3a" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="512" height="512" rx="72" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="72" fill="url(#grid)" opacity="0.5"/>
+  <ellipse cx="256" cy="420" rx="220" ry="50" fill="#ff00e6" opacity="0.12"/>
+
+  <g transform="translate(256,230)" filter="url(#glow)">
+    <circle r="150" fill="none" stroke="url(#ring)" stroke-width="4" opacity="0.5"/>
+    <circle r="105" fill="none" stroke="url(#ring)" stroke-width="5" opacity="0.7"/>
+    <circle r="60" fill="none" stroke="url(#ring)" stroke-width="6" opacity="0.95"/>
+    <circle r="14" fill="#ff00e6"/>
+    <g transform="translate(-25,-40)">
+      <rect x="0" y="0" width="50" height="78" rx="9" fill="#050014" stroke="#00f0ff" stroke-width="4.5"/>
+      <line x1="14" y1="62" x2="36" y2="62" stroke="#ff00e6" stroke-width="4.5"/>
+    </g>
+    <line x1="0" y1="0" x2="130" y2="-75" stroke="#00f0ff" stroke-width="3" opacity="0.85"/>
+  </g>
+
+  <text x="256" y="470" text-anchor="middle" font-family="'Courier New', monospace" font-size="34"
+        letter-spacing="2" font-weight="700" fill="#7ef9ff" filter="url(#glow)">LOCA</text>
+</svg>

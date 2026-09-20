@@ -7,7 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 -----
 
-## [2.2.0] - 2025-01-20
+## [2.3.0] - 2026-09-20
+
+### 🔧 Maintenance Release - Bug Fixes, Cross-Platform Support, Dormant Features
+
+**Developed by:** DezTheJackal
+
+This release fixes real bugs found in v2.2, brings full Windows/macOS support, implements features that
+were documented in earlier changelogs/README sections but never actually wired into the code, and adds
+a new cyberpunk visual identity.
+
+### Fixed
+- Crash in `--le-mode`: a stray `returnPhoneBookLOCA` token (invalid Python, left over from an editing
+  mistake) has been replaced with a plain `return`.
+- Area-code geolocation silently returning `country`-level precision for numbers whose area code isn't
+  3 digits (e.g. UK `020`). Lookup now tries 4-, 3-, 2-, and 1-digit prefixes and takes the first match.
+- First-run crash when `~/.phonebookloca`'s parent directory didn't already exist (`mkdir` now uses
+  `parents=True`).
+- Bare `except:` blocks replaced with specific exception types throughout, so real failures are visible
+  with `--verbose` instead of being silently swallowed.
+- `shutil.which()` returning `None` for an unbuilt Go scraper could resolve to `Path("")`, which
+  `.exists()` treats as the current directory — fixed to only check a candidate path when one was
+  actually found.
+- Removed duplicate "PhoneBookLOCA Quote Fix" / "Quote Fixer" utility files left over from a stale
+  encoding-bug workaround; the underlying bug they patched around no longer exists in this codebase.
+
+### Added
+- **Cross-platform Windows support**: `colorama` initialization for correct ANSI color rendering on
+  `cmd.exe`, and a native `install.ps1` PowerShell installer (the existing `install.sh` only ever worked
+  under WSL/Git Bash on Windows).
+- **Confidence scoring** for both porting detection (0-100%, with named indicators) and geolocation
+  precision (`country`/`area_code`/`cell_tower` mapped to 30/70/90%).
+- **Risk-scored batch analysis**: clustering, same-carrier percentage, and VoIP ratio combine into a
+  0-100 risk score and Low/Medium/High rating; the full report is now saved to disk automatically
+  (`batch_analysis_<timestamp>.json`, or `--output <path>`) — previously described in this changelog but
+  never implemented.
+- **`osint` command and `--osint` flag**: generates Google dorks and public lookup-service URLs, and
+  invokes the previously-orphaned `scraper.go` binary automatically if it has been built (cross-platform:
+  `scraper` / `scraper.exe`).
+- **Historical data in reports**: first/last seen, total lookups, and carrier-change detection, now
+  actually displayed from the `history` table that v2.2 started populating but never surfaced.
+- **CSV and HTML export** for LE-mode reports, alongside the existing JSON export.
+- **LE case metadata**: case type and priority are now captured and stored alongside case number,
+  officer, and agency.
+- **`data/area_codes.json`**: the worldwide area-code table moved out of the script into an external,
+  git-diffable data file. Added South African coverage (Johannesburg, Cape Town, Durban, Pretoria, Port
+  Elizabeth, Bloemfontein), which had no entries at all in v2.2 despite the "worldwide" branding.
+- **`data/carrier_contacts.json`**: a small, extensible reference of public carrier legal-compliance
+  contact portals, surfaced in LE-mode reports and recommendations.
+- **Cyberpunk logo** (`assets/logo.svg`) and square icon variant (`assets/icon.svg`) for the README header
+  and GitHub social preview/avatar use.
+- **`push.sh` / `push.ps1`**: maintainer scripts to stage, commit, tag, and push a release using the
+  user's own git credentials.
+- `--version` flag and top-level exception handler so an unexpected error prints a short message instead
+  of a raw traceback (full traceback still available via `--verbose`).
+
+### Changed
+- README rewritten to describe only what the tool actually does — removed aspirational claims (200+
+  countries, ML classification, a reputation engine) that were never implemented, and dropped the
+  hardcoded "carrier emergency contact" phone numbers in favor of the versioned, correctable
+  `data/carrier_contacts.json`.
+- `requirements.txt` updated to include `colorama` (Windows-only) and note actual minimum Python version
+  (3.8+, matching `f-string`/`pathlib` usage already in the script).
+
+-----
+
+
 
 ### 🌍 Major Release - Worldwide Database + Advanced Analytics
 

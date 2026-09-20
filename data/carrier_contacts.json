@@ -1,0 +1,10 @@
+{
+  "_comment": "Publicly published law-enforcement / legal-compliance contact points for major carriers. For use in generated reports only - actual CDR/ping requests always require a warrant/subpoena served through proper legal channels.",
+  "contacts": {
+    "AT&T": {"portal": "https://www.att.com/legalpolicy/le-guidebook", "note": "Requires subpoena/court order/warrant depending on data requested"},
+    "Verizon": {"portal": "https://www.verizon.com/about/portal/law-enforcement-resource-center", "note": "24/7 LE response team; legal process required"},
+    "T-Mobile": {"portal": "https://www.t-mobile.com/responsibility/consumer-info/law-enforcement", "note": "Legal process required for CDR/location data"},
+    "Vodacom": {"portal": "https://www.vodacom.co.za/vodacom/terms/law-enforcement", "note": "South African RICA process applies"},
+    "MTN": {"portal": "https://www.mtn.co.za", "note": "South African RICA process applies"}
+  }
+}

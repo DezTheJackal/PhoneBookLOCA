@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# PhoneBookLOCA v1.1 - Installation & Build Script
+# PhoneBookLOCA v2.3.0 - Installation & Build Script
 # Original tool by: DezTheJackal
 # Install script maintained by: 0xb0rn3 | oxbv1
 #
@@ -60,7 +60,7 @@ OS=$(detect_os)
 PKG_MANAGER=$(detect_package_manager)
 
 echo -e "${BLUE}╔═══════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║  ${MAGENTA}PhoneBookLOCA v1.1${BLUE} - Installation & Build Script  ║${NC}"
+echo -e "${BLUE}║  ${MAGENTA}PhoneBookLOCA v2.3.0${BLUE} - Installation & Build Script  ║${NC}"
 echo -e "${BLUE}║  ${CYAN}Original: DezTheJackal${BLUE} | ${CYAN}Installer: 0xb0rn3${BLUE}      ║${NC}"
 echo -e "${BLUE}╚═══════════════════════════════════════════════════════╝${NC}"
 echo ""
@@ -256,21 +256,23 @@ if $SYSTEM_WIDE; then
     chmod +x /usr/local/bin/phonebookloca
     echo -e "${GREEN}[✓] Installed to: /usr/local/bin/phonebookloca${NC}"
     
-    # Create data directory
+    # Create data directory and copy bundled data files (area codes, carrier
+    # contacts). PhoneBookLOCA's data_file() lookup checks this path automatically
+    # - no source patching required.
     DATA_DIR="/usr/local/share/phonebookloca"
     mkdir -p "$DATA_DIR"
-    
-    # Copy supporting files
-    if [ -f "scraper" ]; then
-        cp scraper "$DATA_DIR/"
-        chmod +x "$DATA_DIR/scraper"
-        echo -e "${GREEN}[✓] Go scraper installed to: $DATA_DIR/scraper${NC}"
+    if [ -d "data" ]; then
+        cp -r data/* "$DATA_DIR/"
+        echo -e "${GREEN}[✓] Data files installed to: $DATA_DIR${NC}"
     fi
-    
-    # Update the main script to use system paths
-    sed -i "s|Path(__file__).parent / 'scraper'|Path('$DATA_DIR/scraper')|g" /usr/local/bin/phonebookloca 2>/dev/null || \
-    sed -i '' "s|Path(__file__).parent / 'scraper'|Path('$DATA_DIR/scraper')|g" /usr/local/bin/phonebookloca 2>/dev/null
-    
+
+    # Copy the Go scraper binary next to the installed script if it was built
+    if [ -f "scraper" ]; then
+        cp scraper /usr/local/bin/scraper
+        chmod +x /usr/local/bin/scraper
+        echo -e "${GREEN}[✓] Go scraper installed to: /usr/local/bin/scraper${NC}"
+    fi
+
     echo -e "${GREEN}[✓] System-wide installation complete${NC}"
     echo -e "${CYAN}[*] You can now run: ${GREEN}phonebookloca${CYAN} from anywhere${NC}"
 fi
@@ -354,7 +356,7 @@ echo -e "${BLUE}╔════════════════════�
 echo -e "${BLUE}║  ${GREEN}Installation Complete!${BLUE}                               ║${NC}"
 echo -e "${BLUE}╚═══════════════════════════════════════════════════════╝${NC}"
 echo ""
-echo -e "${GREEN}[+] PhoneBookLOCA v1.1 is ready to use!${NC}"
+echo -e "${GREEN}[+] PhoneBookLOCA v2.3.0 is ready to use!${NC}"
 echo ""
 
 if $SYSTEM_WIDE; then

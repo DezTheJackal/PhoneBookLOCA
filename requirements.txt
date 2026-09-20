@@ -1,11 +1,14 @@
-# PhoneBookLOCA v2.0 Requirements
-# Maintained by: 0xb0rn3 | oxbv1
+# PhoneBookLOCA v2.3 Requirements
+# Maintained by: DezTheJackal (core) / 0xb0rn3 (v1.x contributions)
 
 # Core dependencies (required)
 phonenumbers>=8.12.0
 requests>=2.25.0
 
-# Optional - Rich Terminal UI (highly recommended for v2.0 features)
-# Provides beautiful formatting, progress bars, and enhanced UX
-# Tool still works without it, but with basic formatting
+# Optional - Rich Terminal UI (highly recommended for formatted output)
+# Tool still works without it, but with basic ANSI formatting
 rich>=13.0.0
+
+# Optional - required for correct ANSI color rendering on legacy Windows
+# consoles (cmd.exe). Not needed on Linux/macOS or Windows Terminal.
+colorama>=0.4.6; sys_platform == "win32"

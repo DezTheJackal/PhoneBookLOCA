@@ -1,0 +1,73 @@
+<svg width="900" height="220" viewBox="0 0 900 220" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0a0014"/>
+      <stop offset="55%" stop-color="#0d0221"/>
+      <stop offset="100%" stop-color="#050014"/>
+    </linearGradient>
+    <linearGradient id="neonText" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#00f0ff"/>
+      <stop offset="55%" stop-color="#ff00e6"/>
+      <stop offset="100%" stop-color="#7a00ff"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#00f0ff"/>
+      <stop offset="100%" stop-color="#ff00e6"/>
+    </linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="4.2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
+      <path d="M 28 0 L 0 0 0 28" fill="none" stroke="#1d0d3a" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="900" height="220" fill="url(#bg)"/>
+  <rect width="900" height="220" fill="url(#grid)" opacity="0.55"/>
+
+  <!-- horizon glow -->
+  <ellipse cx="140" cy="190" rx="260" ry="60" fill="#ff00e6" opacity="0.10"/>
+  <ellipse cx="140" cy="190" rx="140" ry="30" fill="#00f0ff" opacity="0.12"/>
+
+  <!-- radar / signal rings icon -->
+  <g transform="translate(140,110)" filter="url(#glow)">
+    <circle r="66" fill="none" stroke="url(#ring)" stroke-width="2" opacity="0.55"/>
+    <circle r="46" fill="none" stroke="url(#ring)" stroke-width="2.4" opacity="0.75"/>
+    <circle r="26" fill="none" stroke="url(#ring)" stroke-width="3" opacity="0.95"/>
+    <circle r="7" fill="#ff00e6"/>
+    <!-- phone glyph -->
+    <g transform="translate(-11,-17)">
+      <rect x="0" y="0" width="22" height="34" rx="4" fill="#050014" stroke="#00f0ff" stroke-width="2"/>
+      <line x1="6" y1="27" x2="16" y2="27" stroke="#ff00e6" stroke-width="2"/>
+    </g>
+    <!-- signal sweep line -->
+    <line x1="0" y1="0" x2="60" y2="-34" stroke="#00f0ff" stroke-width="1.5" opacity="0.8">
+      <animateTransform attributeName="transform" type="rotate" from="0 0 0" to="360 0 0" dur="4s" repeatCount="indefinite"/>
+    </line>
+  </g>
+
+  <!-- Wordmark -->
+  <g filter="url(#glow)">
+    <text x="250" y="105" font-family="'Courier New', monospace" font-size="52" font-weight="700" fill="url(#neonText)">
+      PhoneBook<tspan fill="#ff00e6">LOCA</tspan>
+    </text>
+  </g>
+  <text x="252" y="135" font-family="'Courier New', monospace" font-size="17" letter-spacing="4" fill="#7ef9ff" opacity="0.85">
+    WORLDWIDE PHONE OSINT PLATFORM
+  </text>
+  <text x="252" y="160" font-family="'Courier New', monospace" font-size="13" letter-spacing="2" fill="#ff6bf0" opacity="0.75">
+    v2.3.0 :: created by DezTheJackal
+  </text>
+
+  <!-- circuit accents -->
+  <path d="M 620 40 L 700 40 L 700 70 L 860 70" fill="none" stroke="#00f0ff" stroke-width="1.5" opacity="0.6"/>
+  <path d="M 640 180 L 720 180 L 720 150 L 860 150" fill="none" stroke="#ff00e6" stroke-width="1.5" opacity="0.6"/>
+  <circle cx="700" cy="40" r="3" fill="#00f0ff"/>
+  <circle cx="700" cy="70" r="3" fill="#00f0ff"/>
+  <circle cx="720" cy="180" r="3" fill="#ff00e6"/>
+  <circle cx="720" cy="150" r="3" fill="#ff00e6"/>
+</svg>
