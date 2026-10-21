@@ -1,4 +1,4 @@
-# 📱 PhoneBookLOCA v2.3
+# 📱 PhoneBookLOCA v2.3.1
 
 <div align="center">
 
@@ -13,7 +13,7 @@
 
 *For educational, authorized security research, and law enforcement use only*
 
-[Features](#-features) • [Installation](#-installation) • [Usage](#-usage) • [What's New](#-whats-new-in-v230)
+[Features](#-features) • [Installation](#-installation) • [Usage](#-usage) • [What's New](#-whats-new-in-v231)
 
 </div>
 
@@ -37,10 +37,73 @@ key, and public web lookups) — it does not access carrier networks or provide 
 | **v2.1** | Enhanced geolocation, LE case tracking | **DezTheJackal** |
 | **v2.2** | Worldwide area-code database, porting detection | **DezTheJackal** |
 | **v2.3** | Confidence/risk scoring, OSINT command wired to the Go scraper, CSV/HTML export, cross-platform (Windows/macOS), bug fixes | **DezTheJackal** |
+| **v2.3.1** | OSINT upgrade: corrected lookup links, messaging-app checks, data-breach check with its own report files | **DezTheJackal** |
 
 -----
 
-## ✨ What's New in v2.3.0
+## ✨ What's New in v2.3.1
+
+Only the OSINT section changed — every command and flag works exactly as before (`--osint`, the
+`osint <number>` command, and `--le-mode` all pick up the new behavior automatically).
+
+- **More accurate links** — Truecaller now uses the ISO region (`/search/za/...`) instead of the calling
+  code, Whitepages uses its dashed US format (and only appears for `+1` numbers), and dorks search the
+  number in E.164, international *and* local formats at once. Each dork also gets a clickable Google link.
+- **Messaging-app checks** — direct `wa.me`, `t.me` and `signal.me` links for the number.
+- **Data-breach check — works with no API at all.** It runs inside OSINT and has two layers:
+  1. **Offline (no API, no network):** searches breach files you already hold, in
+     `~/.phonebookloca/breach_data/` (see below).
+  2. **Online (optional):** with keys set it also queries
+     [Have I Been Pwned](https://haveibeenpwned.com/API/v3) and
+     [LeakCheck](https://wiki.leakcheck.io/en/api/api-v2-pro). Manual-lookup links (including an
+     [Intelligence X](https://intelx.io/) deep link) are always shown.
+- **Own output files** — if a breach is found (offline or online), `BREACH_<number>_<timestamp>.json` and
+  `.html` are written to `~/.phonebookloca/reports/breach/`. Nothing is written when no breach is found.
+  Only the source/file name, line number, date and the *names* of exposed fields are saved — never leaked
+  passwords or other raw values.
+- **Fix:** a cached plain lookup no longer hides `--geo` / `--osint` sections requested afterwards, and
+  OSINT/breach results are always fetched live rather than served from cache.
+
+### Offline breach check (no API needed)
+
+Put breach/leak datasets you are authorised to hold into the breach folder — it is created automatically on
+the first `--osint` run:
+
+| OS | Default folder |
+|---|---|
+| Linux / macOS | `~/.phonebookloca/breach_data/` |
+| Windows | `C:\Users\<you>\.phonebookloca\breach_data\` |
+
+Override it with `PHONEBOOKLOCA_BREACH_DIR`. Supported: `.csv .tsv .txt .json .jsonl .sql .log` and
+gzip-compressed versions (`.csv.gz`, …), including subfolders (up to 500 files).
+
+- Every field of every line is reduced to its digits and compared with each common storage form of the
+  number, so `+27 82 123 4567`, `082 123 4567`, `0027821234567` and `27821234567` all match, while a longer
+  number that merely contains those digits does not.
+- Result per file: **breached** (match found), **clean** (files scanned, no match) or **skipped** (folder
+  empty — the output tells you where to put files).
+- Hits are capped at 25 per file / 100 total (flagged "list truncated"). Very large datasets are scanned
+  line by line, so multi-GB files take a while.
+- The matching line is **never stored** — only file name, line number and CSV column names.
+- Keep the folder outside the git repo (the repo's `.gitignore` also excludes `breach_data/` and `reports/`).
+
+### Online breach check (optional, needs API keys)
+
+```bash
+# Linux/macOS
+export HIBP_API_KEY="your_hibp_key"          # https://haveibeenpwned.com/API/Key (paid)
+export LEAKCHECK_API_KEY="your_leakcheck_key" # LeakCheck account settings (paid)
+
+# Windows (PowerShell)
+$env:HIBP_API_KEY = "your_hibp_key"
+$env:LEAKCHECK_API_KEY = "your_leakcheck_key"
+```
+
+Coverage notes: the offline check is only as good as the datasets you give it. HIBP only indexes phone numbers for a few breaches (notably the 2021 Facebook leak), so a
+"clean" HIBP result is not proof a number was never exposed. A breach hit shows the number appeared in
+leaked data — it does not by itself identify who uses the number.
+
+### Earlier: v2.3.0
 
 This release focuses on finishing features that were documented but never fully wired up, fixing real
 bugs, and making the tool run cleanly on Windows and macOS, not just Linux.
@@ -100,7 +163,7 @@ bugs, and making the tool run cleanly on Windows and macOS, not just Linux.
 | **Geolocation** | Area-code-level location with confidence score; optional OpenCellID integration for real cell-tower data (±5km vs ±50km) |
 | **Porting analysis** | Weighted confidence score from VoIP type, MVNO carrier match, and historical carrier changes |
 | **Batch analysis** | Geographic clustering, carrier concentration, VoIP ratio, 0-100 risk score, auto-saved JSON report |
-| **OSINT leads** | Google dorks, public lookup-service URLs, optional Go-based web scraper for live checks |
+| **OSINT leads** | Multi-format Google dorks + links, lookup services, WhatsApp/Telegram/Signal links, data-breach check with report files, optional Go-based web scraper |
 | **LE case mode** | Case tracking (number, officer, agency, type, priority), JSON/CSV/HTML report export |
 | **History** | Every lookup is tracked; first/last seen and carrier-change detection surface automatically |
 | **Caching** | SQLite-backed cache so repeat lookups are instant and offline-capable |
