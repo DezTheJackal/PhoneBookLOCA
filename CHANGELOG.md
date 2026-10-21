@@ -20,7 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     the number (E.164, `00` prefix, national, formatted) on whole fields, so longer numbers do not
     false-match. Folder is auto-created; capped at 25 hits/file and 100 total.
   - *Online (optional)*: Have I Been Pwned (`HIBP_API_KEY`) and LeakCheck (`LEAKCHECK_API_KEY`).
-  - Manual links (Intelligence X deep link, HIBP, LeakCheck) are always shown.
+  - Free manual links are always shown (Have I Been Pwned, Max Intel Phone Lookup) plus the open-source
+    tools PhoneInfoga and Ignorant. No paid platform (e.g. Intelligence X) is linked.
 - `.gitignore` excluding `breach_data/`, `reports/`, local databases and built scraper binaries.
 - **Breach report files**: when a breach is found, `BREACH_<number>_<timestamp>.json` and `.html` are
   written to `~/.phonebookloca/reports/breach/`. No files are written when nothing is found. Raw leaked
