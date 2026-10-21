@@ -1,0 +1,11 @@
+# Local data - never commit breach datasets, generated reports or caches
+breach_data/
+reports/
+*.db
+batch_analysis_*.json
+__pycache__/
+*.pyc
+
+# Built Go scraper binaries (build locally: go build -o scraper scraper.go)
+scraper
+scraper.exe
