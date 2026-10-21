@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# PhoneBookLOCA v2.3.0 - Installation & Build Script
+# PhoneBookLOCA v2.3.1 - Installation & Build Script
 # Original tool by: DezTheJackal
 # Install script maintained by: 0xb0rn3 | oxbv1
 #
@@ -60,7 +60,7 @@ OS=$(detect_os)
 PKG_MANAGER=$(detect_package_manager)
 
 echo -e "${BLUE}╔═══════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║  ${MAGENTA}PhoneBookLOCA v2.3.0${BLUE} - Installation & Build Script  ║${NC}"
+echo -e "${BLUE}║  ${MAGENTA}PhoneBookLOCA v2.3.1${BLUE} - Installation & Build Script  ║${NC}"
 echo -e "${BLUE}║  ${CYAN}Original: DezTheJackal${BLUE} | ${CYAN}Installer: 0xb0rn3${BLUE}      ║${NC}"
 echo -e "${BLUE}╚═══════════════════════════════════════════════════════╝${NC}"
 echo ""
@@ -356,7 +356,7 @@ echo -e "${BLUE}╔════════════════════�
 echo -e "${BLUE}║  ${GREEN}Installation Complete!${BLUE}                               ║${NC}"
 echo -e "${BLUE}╚═══════════════════════════════════════════════════════╝${NC}"
 echo ""
-echo -e "${GREEN}[+] PhoneBookLOCA v2.3.0 is ready to use!${NC}"
+echo -e "${GREEN}[+] PhoneBookLOCA v2.3.1 is ready to use!${NC}"
 echo ""
 
 if $SYSTEM_WIDE; then
