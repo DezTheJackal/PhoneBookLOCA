@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PhoneBookLOCA v2.3 - Worldwide Phone OSINT Platform
+PhoneBookLOCA v2.3.1 - Worldwide Phone OSINT Platform
 Created by: DezTheJackal
 
 Usage:
@@ -25,12 +25,16 @@ import logging
 import argparse
 import platform
 import subprocess
+import re
+import gzip
+import html
 import webbrowser
+from urllib.parse import quote, quote_plus
 from pathlib import Path
 from datetime import datetime
 from collections import Counter
 
-VERSION = "2.3.0"
+VERSION = "2.3.1"
 
 try:
     import phonenumbers
@@ -296,9 +300,11 @@ class PhoneIntel:
         number = number.strip()
         print(f"\n{Y}[*]{W} Target: {number}")
 
-        if use_cache:
+        # OSINT/breach data is always fetched live, and a cached plain lookup must
+        # not hide --geo / --osint sections that were never collected.
+        if use_cache and not osint:
             cached = self.db.cache_get(number)
-            if cached:
+            if cached and (not enhanced or 'enhanced' in cached):
                 print(f"{G}[+]{W} Using cached data\n")
                 self.display(cached)
                 return cached
@@ -455,26 +461,346 @@ class PhoneIntel:
     # -------------------------------------------------------------- osint
 
     def osint_intel(self, number, parsed):
-        """Generate passive OSINT leads: dorks, lookup URLs, social checks, breach hints."""
-        digits = "".join(ch for ch in number if ch.isdigit())
+        """Passive OSINT leads: dorks + clickable search links, lookup services,
+        messaging-app checks and a data-breach check (see check_breaches)."""
+        e164 = phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+        intl = phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.INTERNATIONAL)
+        local = phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.NATIONAL)
+        digits = e164.lstrip('+')
         national = str(parsed.national_number)
+        region = (phonenumbers.region_code_for_number(parsed) or '').lower()
 
-        intel = {
-            'search_dorks': [
-                f'"{number}"',
-                f'"{national}" site:facebook.com',
-                f'"{national}" site:linkedin.com',
-                f'intext:"{number}" filetype:pdf',
-            ],
-            'lookup_services': [
-                f"https://www.truecaller.com/search/{parsed.country_code}/{national}",
-                f"https://sync.me/search/?number={digits}",
-                f"https://www.whitepages.com/phone/{digits}",
-            ],
-            'breach_check': f"https://haveibeenpwned.com/  (search {number} manually - no public API for phone numbers)",
+        # Pages usually print a number in local OR international style, so search both.
+        variants = [e164, intl, local]
+        either = ' OR '.join(f'"{v}"' for v in dict.fromkeys(variants))
+        dorks = [
+            either,
+            f'({either}) site:facebook.com',
+            f'({either}) site:linkedin.com',
+            f'({either}) filetype:pdf',
+        ]
+        search_links = [
+            'https://www.google.com/search?q=' + quote_plus(d) for d in dorks
+        ]
+
+        lookup_services = []
+        if region:
+            # Truecaller's web search uses the ISO region (e.g. za, us), not the calling code.
+            lookup_services.append(f"https://www.truecaller.com/search/{region}/{national}")
+        lookup_services.append(f"https://sync.me/search/?number={digits}")
+        if parsed.country_code == 1 and len(national) == 10:
+            lookup_services.append(
+                f"https://www.whitepages.com/phone/1-{national[:3]}-{national[3:6]}-{national[6:]}")
+
+        # Messaging apps: each link opens the app's own "is this number registered" flow.
+        messaging = {
+            'whatsapp': f"https://wa.me/{digits}",
+            'telegram': f"https://t.me/+{digits}",
+            'signal': f"https://signal.me/#p/{quote(e164)}",
+        }
+
+        breach = self.check_breaches(parsed)
+
+        return {
+            'search_dorks': dorks,
+            'search_links': search_links,
+            'lookup_services': lookup_services,
+            'messaging_checks': messaging,
+            'breach_check': breach['manual_links'][0]['url'],
+            'breach': breach,
             'go_scraper': self._run_go_scraper(number),
         }
-        return intel
+
+    # ------------------------------------------------------- breach check
+
+    def check_breaches(self, parsed):
+        """Check whether the number appears in known data breaches.
+
+        Works with NO API keys: breach files you already hold are searched
+        locally (see _breach_local). Automated online lookups additionally run
+        for each service whose key is set (HIBP_API_KEY, LEAKCHECK_API_KEY);
+        services without a key are reported as 'skipped'. Manual search links
+        are always provided.
+        If any breach is found, JSON + HTML report files are written to
+        ~/.phonebookloca/reports/breach/.
+        """
+        e164 = phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+        digits = e164.lstrip('+')
+
+        manual_links = [
+            {'name': 'Intelligence X', 'url': f"https://intelx.io/?s={quote(e164)}",
+             'note': 'Search across leaks/dark web archives (account may be required to view results)'},
+            {'name': 'Have I Been Pwned', 'url': 'https://haveibeenpwned.com/',
+             'note': f'Paste {e164} into the search box (phone coverage is limited, e.g. the 2021 Facebook leak)'},
+            {'name': 'LeakCheck', 'url': 'https://leakcheck.io/',
+             'note': f'Search {digits} as a phone number (login required for full results)'},
+        ]
+
+        sources = [
+            self._breach_local(parsed),
+            self._breach_hibp(digits),
+            self._breach_leakcheck(digits),
+        ]
+        breaches = [b for src in sources for b in src.get('breaches', [])]
+
+        result = {
+            'checked_at': datetime.now().isoformat(),
+            'number': e164,
+            'sources': [{k: v for k, v in src.items() if k != 'breaches'} for src in sources],
+            'breached': bool(breaches),
+            'breach_count': len(breaches),
+            'breaches': breaches,
+            'manual_links': manual_links,
+            'report_files': [],
+        }
+        if breaches:
+            result['report_files'] = self._write_breach_reports(result)
+        return result
+
+    # Breach-file types searched by the offline (no-API) check.
+    BREACH_SUFFIXES = {'.csv', '.tsv', '.txt', '.json', '.jsonl', '.sql', '.log'}
+    BREACH_MAX_FILES = 500
+    BREACH_MAX_HITS_PER_FILE = 25
+    BREACH_MAX_HITS_TOTAL = 100
+
+    def breach_data_dir(self):
+        """Folder searched by the offline breach check (override: PHONEBOOKLOCA_BREACH_DIR)."""
+        env = os.getenv('PHONEBOOKLOCA_BREACH_DIR')
+        return Path(env).expanduser() if env else self.cache_dir / "breach_data"
+
+    @staticmethod
+    def _number_forms(parsed):
+        """Every digit-only form a number is commonly stored as in leaked data."""
+        e164 = phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164).lstrip('+')
+        national_fmt = re.sub(r'\D', '', phonenumbers.format_number(
+            parsed, phonenumbers.PhoneNumberFormat.NATIONAL))
+        nsn = str(parsed.national_number)
+        return {e164, '00' + e164, national_fmt, nsn, '0' + nsn}
+
+    def _breach_local(self, parsed):
+        """Search breach files on disk for the number. No API, no network.
+
+        Drop leaked/breach datasets (.csv .tsv .txt .json .jsonl .sql .log, or
+        gzip-compressed versions ending in .gz) into the breach data folder.
+        Each field of each line is reduced to its digits and compared with every
+        common storage form of the number, so '+27 82 123 4567', '082 123 4567'
+        and '27821234567' all match - but a longer number that merely contains
+        these digits does not. Only the file name, line number and CSV column
+        NAMES are recorded; the matching line itself is never stored.
+        """
+        name = 'Local breach files'
+        folder = self.breach_data_dir()
+        try:
+            folder.mkdir(parents=True, exist_ok=True)   # so the user can see where to drop files
+        except OSError as e:
+            return {'service': name, 'status': 'error', 'detail': f'cannot use {folder}: {e}'}
+
+        files = []
+        try:
+            for f in sorted(folder.rglob('*')):
+                base = f.name[:-3] if f.name.lower().endswith('.gz') else f.name
+                if (f.is_file() and not f.name.startswith('.')
+                        and Path(base).suffix.lower() in self.BREACH_SUFFIXES):
+                    files.append(f)
+                    if len(files) >= self.BREACH_MAX_FILES:
+                        break
+        except OSError as e:
+            return {'service': name, 'status': 'error', 'detail': str(e)}
+
+        if not files:
+            return {'service': name, 'status': 'skipped',
+                    'detail': f'no breach files found - drop datasets in {folder}'}
+
+        forms = self._number_forms(parsed)
+        field_split = re.compile(r'[,;\t|"\':=<>\[\]{}]')
+        hits, truncated = [], False
+
+        for f in files:
+            opener = gzip.open if f.name.lower().endswith('.gz') else open
+            base = f.name[:-3] if f.name.lower().endswith('.gz') else f.name
+            delimited = Path(base).suffix.lower() in ('.csv', '.tsv')
+            columns, file_hits = [], 0
+            try:
+                with opener(f, 'rt', encoding='utf-8', errors='ignore') as fh:
+                    for lineno, line in enumerate(fh, 1):
+                        if lineno == 1 and delimited and not re.search(r'\d{7,}', line):
+                            columns = [c.strip(' "\'\r\n')[:20] for c in re.split(r'[,;\t|]', line)][:15]
+                            columns = [c for c in columns if c]
+                        if not any(ch.isdigit() for ch in line):
+                            continue
+                        for field in field_split.split(line):
+                            if re.sub(r'\D', '', field) in forms:
+                                hits.append({
+                                    'source': 'Local breach files',
+                                    'name': f"{f.relative_to(folder)} (line {lineno})",
+                                    'breach_date': None,
+                                    'domain': None,
+                                    'data_classes': columns,
+                                    'pwn_count': None,
+                                })
+                                file_hits += 1
+                                break
+                        if file_hits >= self.BREACH_MAX_HITS_PER_FILE:
+                            truncated = True
+                            break
+            except (OSError, EOFError, gzip.BadGzipFile) as e:
+                log.warning("Could not read %s: %s", f, e)
+            if len(hits) >= self.BREACH_MAX_HITS_TOTAL:
+                truncated = True
+                break
+
+        if hits:
+            note = ' (list truncated)' if truncated else ''
+            return {'service': name, 'status': 'breached',
+                    'detail': f'{len(hits)} match(es) in {len(files)} file(s){note}', 'breaches': hits}
+        return {'service': name, 'status': 'clean', 'detail': f'{len(files)} file(s) scanned, no matches'}
+
+    @staticmethod
+    def _skipped(name, env_var):
+        return {'service': name, 'status': 'skipped',
+                'detail': f'set {env_var} to enable automated checks'}
+
+    def _breach_hibp(self, digits):
+        """Have I Been Pwned: GET /api/v3/breachedaccount/{E.164 digits}."""
+        key = os.getenv('HIBP_API_KEY')
+        if not key:
+            return self._skipped('Have I Been Pwned', 'HIBP_API_KEY')
+        try:
+            resp = requests.get(
+                f"https://haveibeenpwned.com/api/v3/breachedaccount/{digits}",
+                params={'truncateResponse': 'false'},
+                headers={'hibp-api-key': key,
+                         'user-agent': f'PhoneBookLOCA/{VERSION}'},
+                timeout=15,
+            )
+        except requests.RequestException as e:
+            log.warning("HIBP request failed: %s", e)
+            return {'service': 'Have I Been Pwned', 'status': 'error', 'detail': str(e)}
+
+        if resp.status_code == 404:
+            return {'service': 'Have I Been Pwned', 'status': 'clean', 'detail': 'no breaches found'}
+        if resp.status_code == 200:
+            try:
+                data = resp.json()
+            except ValueError:
+                return {'service': 'Have I Been Pwned', 'status': 'error', 'detail': 'invalid JSON response'}
+            breaches = [{
+                'source': 'Have I Been Pwned',
+                'name': b.get('Title') or b.get('Name'),
+                'breach_date': b.get('BreachDate'),
+                'domain': b.get('Domain'),
+                'data_classes': b.get('DataClasses', []),
+                'pwn_count': b.get('PwnCount'),
+            } for b in data]
+            return {'service': 'Have I Been Pwned', 'status': 'breached',
+                    'detail': f'{len(breaches)} breach(es)', 'breaches': breaches}
+        detail = {401: 'invalid or missing API key', 429: 'rate limited - retry shortly'}.get(
+            resp.status_code, f'HTTP {resp.status_code}')
+        return {'service': 'Have I Been Pwned', 'status': 'error', 'detail': detail}
+
+    def _breach_leakcheck(self, digits):
+        """LeakCheck Pro API v2: GET /api/v2/query/{digits}?type=phone.
+
+        Only the breach source and the NAMES of exposed fields are kept - raw
+        values (which can include passwords) are never stored or written to disk.
+        """
+        key = os.getenv('LEAKCHECK_API_KEY')
+        if not key:
+            return self._skipped('LeakCheck', 'LEAKCHECK_API_KEY')
+        try:
+            resp = requests.get(
+                f"https://leakcheck.io/api/v2/query/{digits}",
+                params={'type': 'phone'},
+                headers={'X-API-Key': key, 'Accept': 'application/json'},
+                timeout=15,
+            )
+        except requests.RequestException as e:
+            log.warning("LeakCheck request failed: %s", e)
+            return {'service': 'LeakCheck', 'status': 'error', 'detail': str(e)}
+
+        if resp.status_code != 200:
+            detail = {400: 'invalid API key or query', 401: 'missing API key',
+                      422: 'could not determine search type', 429: 'rate limited - retry shortly'}.get(
+                resp.status_code, f'HTTP {resp.status_code}')
+            return {'service': 'LeakCheck', 'status': 'error', 'detail': detail}
+        try:
+            data = resp.json()
+        except ValueError:
+            return {'service': 'LeakCheck', 'status': 'error', 'detail': 'invalid JSON response'}
+
+        if not data.get('success', False):
+            return {'service': 'LeakCheck', 'status': 'error',
+                    'detail': str(data.get('error', 'request failed'))}
+        rows = data.get('result') or []
+        if not rows:
+            return {'service': 'LeakCheck', 'status': 'clean', 'detail': 'no breaches found'}
+
+        breaches = []
+        for row in rows:
+            src = row.get('source') or {}
+            breaches.append({
+                'source': 'LeakCheck',
+                'name': src.get('name') or 'Unknown source',
+                'breach_date': src.get('breach_date'),
+                'domain': None,
+                'data_classes': sorted(k for k in row if k != 'source'),
+                'pwn_count': None,
+            })
+        return {'service': 'LeakCheck', 'status': 'breached',
+                'detail': f'{len(breaches)} record(s)', 'breaches': breaches}
+
+    def _write_breach_reports(self, result):
+        """Write the breach findings to their own JSON + HTML files."""
+        out_dir = self.cache_dir / "reports" / "breach"
+        try:
+            out_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            log.warning("Could not create breach report dir: %s", e)
+            return []
+
+        stem = out_dir / f"BREACH_{result['number'].lstrip('+')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        files = []
+
+        try:
+            jpath = stem.with_suffix('.json')
+            with open(jpath, 'w', encoding='utf-8') as f:
+                json.dump(result, f, indent=2)
+            files.append(str(jpath))
+        except OSError as e:
+            log.warning("Could not write breach JSON: %s", e)
+
+        esc = html.escape
+        rows = "".join(
+            "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>".format(
+                esc(str(b.get('source') or '')), esc(str(b.get('name') or '')),
+                esc(str(b.get('breach_date') or 'n/a')),
+                esc(', '.join(b.get('data_classes') or []) or 'n/a'))
+            for b in result['breaches'])
+        links = "".join(
+            '<li><a href="{}">{}</a> - {}</li>'.format(esc(l['url'], quote=True), esc(l['name']), esc(l['note']))
+            for l in result['manual_links'])
+        page = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>PhoneBookLOCA Breach Report - {esc(result['number'])}</title>
+<style>body{{font-family:'Courier New',monospace;background:#0a0014;color:#7ef9ff;padding:2em}}
+h1{{color:#ff00e6}}h2{{color:#00f0ff}}table{{border-collapse:collapse;width:100%}}
+th,td{{border:1px solid #00f0ff55;padding:6px 12px;text-align:left}}th{{color:#ff6bf0}}
+a{{color:#ff6bf0}}.warn{{color:#ffd166}}</style></head><body>
+<h1>PhoneBookLOCA :: Data Breach Report</h1>
+<p>Number: <b>{esc(result['number'])}</b><br>Checked: {esc(result['checked_at'])}<br>
+Breach records found: <b>{result['breach_count']}</b></p>
+<table><tr><th>Service</th><th>Breach / file</th><th>Date</th><th>Data exposed (column names)</th></tr>{rows}</table>
+<h2>Verify manually</h2><ul>{links}</ul>
+<p class="warn">Presence in a breach shows the number appeared in leaked data; it does not by itself
+identify or attribute the number to a person. Verify before relying on it.</p>
+</body></html>"""
+        try:
+            hpath = stem.with_suffix('.html')
+            with open(hpath, 'w', encoding='utf-8') as f:
+                f.write(page)
+            files.append(str(hpath))
+        except OSError as e:
+            log.warning("Could not write breach HTML: %s", e)
+        return files
 
     def _run_go_scraper(self, number):
         """Invoke the optional compiled Go scraper (scraper.go) if it is present on PATH
@@ -517,6 +843,9 @@ class PhoneIntel:
             recs.append("Likely ported - do not rely on area code alone for location; request porting history (LNP) from carrier")
         if not enh.get('coordinates'):
             recs.append("No area-code match on file - add coverage to data/area_codes.json or rely on carrier subpoena for location")
+        breach = (r.get('osint') or {}).get('breach') or {}
+        if breach.get('breached'):
+            recs.append(f"Number appears in {breach['breach_count']} breach record(s) - review the breach report and verify before relying on it")
         if r.get('carrier') in self.carrier_contacts:
             recs.append(f"Legal contact on file for {r['carrier']} - see report for portal")
         if not recs:
@@ -611,14 +940,60 @@ class PhoneIntel:
         print("  Lookup services:")
         for u in o['lookup_services']:
             print(f"    {u}")
+        if o.get('search_links'):
+            print("  Search links:")
+            for u in o['search_links'][:2]:
+                print(f"    {u}")
+        if o.get('messaging_checks'):
+            print("  Messaging checks:")
+            for name, u in o['messaging_checks'].items():
+                print(f"    {name}: {u}")
         gs = o.get('go_scraper', {})
         if gs.get('status') == 'not built':
             print(f"  {Y}[i]{W} {gs['note']}")
+        if o.get('breach'):
+            self._display_breach_plain(o['breach'])
+
+    def _display_breach_plain(self, b):
+        print(f"\n{M}[*]{W} Data Breach Check:")
+        for src in b['sources']:
+            print(f"  {src['service']}: {src['status']} ({src['detail']})")
+        if b['breached']:
+            print(f"  {R}[!]{W} {b['breach_count']} breach record(s) found:")
+            for item in b['breaches'][:10]:
+                print(f"    - {item['source']}: {item['name']} ({item.get('breach_date') or 'date n/a'})")
+            for f in b['report_files']:
+                print(f"  {G}[+]{W} Report saved: {f}")
+        elif all(s['status'] == 'skipped' for s in b['sources']):
+            print(f"  {Y}[i]{W} Nothing to search - add breach files or API keys, or verify manually:")
+        else:
+            print(f"  {G}[+]{W} No breaches found by the services checked. Manual links:")
+        if not b['breached']:
+            for l in b['manual_links']:
+                print(f"    {l['name']}: {l['url']}")
 
     def _display_osint_rich(self, o):
         body = "Search dorks:\n" + "\n".join(o['search_dorks'][:3])
         body += "\n\nLookup services:\n" + "\n".join(o['lookup_services'])
+        if o.get('messaging_checks'):
+            body += "\n\nMessaging checks:\n" + "\n".join(
+                f"{n}: {u}" for n, u in o['messaging_checks'].items())
         console.print(Panel.fit(body, title="OSINT Leads", border_style="magenta"))
+
+        b = o.get('breach')
+        if b:
+            lines = [f"{s['service']}: {s['status']} ({s['detail']})" for s in b['sources']]
+            if b['breached']:
+                lines.append(f"[red]{b['breach_count']} breach record(s) found:[/red]")
+                lines += [f"- {i['source']}: {i['name']} ({i.get('breach_date') or 'date n/a'})"
+                          for i in b['breaches'][:10]]
+                lines += [f"[green]Report saved:[/green] {f}" for f in b['report_files']]
+            else:
+                if all(s['status'] == 'skipped' for s in b['sources']):
+                    lines.append("[yellow]Nothing to search - add breach files or API keys, or verify manually:[/yellow]")
+                lines += [f"{l['name']}: {l['url']}" for l in b['manual_links']]
+            console.print(Panel.fit("\n".join(lines), title="Data Breach Check",
+                                    border_style="red" if b['breached'] else "magenta"))
 
     # --------------------------------------------------------------- batch
 
@@ -858,6 +1233,10 @@ v{VERSION} additions:
   - Historical carrier/location tracking surfaced in reports
   - CSV/HTML export alongside JSON for LE reports
   - Cross-platform: Windows, macOS, Linux
+  - OSINT breach check - works with no API: drop breach files in
+    ~/.phonebookloca/breach_data/ to search them offline. Optional online lookups:
+    HIBP_API_KEY / LEAKCHECK_API_KEY. Breach reports are saved under
+    ~/.phonebookloca/reports/breach/
 """)
 
 
