@@ -55,8 +55,11 @@ Only the OSINT section changed — every command and flag works exactly as befor
      `~/.phonebookloca/breach_data/` (see below).
   2. **Online (optional):** with keys set it also queries
      [Have I Been Pwned](https://haveibeenpwned.com/API/v3) and
-     [LeakCheck](https://wiki.leakcheck.io/en/api/api-v2-pro). Manual-lookup links (including an
-     [Intelligence X](https://intelx.io/) deep link) are always shown.
+     [LeakCheck](https://wiki.leakcheck.io/en/api/api-v2-pro) (both paid). Free manual links —
+     [Have I Been Pwned](https://haveibeenpwned.com/) and
+     [Max Intel Phone Lookup](https://maxintel.org/phone.html) — are always shown, along with the
+     open-source tools [PhoneInfoga](https://github.com/sundowndev/phoneinfoga) and
+     [Ignorant](https://github.com/megadose/ignorant) for deeper local recon. No paid platform is linked.
 - **Own output files** — if a breach is found (offline or online), `BREACH_<number>_<timestamp>.json` and
   `.html` are written to `~/.phonebookloca/reports/breach/`. Nothing is written when no breach is found.
   Only the source/file name, line number, date and the *names* of exposed fields are saved — never leaked
