@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 -----
 
+## [2.3.1] - 2026-10-21
+
+### 🔎 OSINT Update - Accurate Links + Data-Breach Check
+
+**Developed by:** DezTheJackal. No existing command or flag changed.
+
+### Added
+- **Data-breach check** inside `--osint` / `osint <number>` / `--le-mode`, with **no API required**:
+  - *Offline*: searches breach files (`.csv .tsv .txt .json .jsonl .sql .log`, optionally `.gz`) in
+    `~/.phonebookloca/breach_data/` (or `PHONEBOOKLOCA_BREACH_DIR`). Matches every common storage form of
+    the number (E.164, `00` prefix, national, formatted) on whole fields, so longer numbers do not
+    false-match. Folder is auto-created; capped at 25 hits/file and 100 total.
+  - *Online (optional)*: Have I Been Pwned (`HIBP_API_KEY`) and LeakCheck (`LEAKCHECK_API_KEY`).
+  - Manual links (Intelligence X deep link, HIBP, LeakCheck) are always shown.
+- `.gitignore` excluding `breach_data/`, `reports/`, local databases and built scraper binaries.
+- **Breach report files**: when a breach is found, `BREACH_<number>_<timestamp>.json` and `.html` are
+  written to `~/.phonebookloca/reports/breach/`. No files are written when nothing is found. Raw leaked
+  values (passwords, emails, names) and matching lines are never stored - only source/file name, line
+  number, date and exposed field names.
+- Messaging-app links (`wa.me`, `t.me`, `signal.me`) and clickable Google search links for each dork.
+- Recommendation added to LE reports when a number appears in a breach.
+
+### Fixed
+- Truecaller link used the numeric calling code (`/search/27/...`); it now uses the ISO region
+  (`/search/za/...`).
+- Whitepages link used undashed digits and appeared for every country; it now uses the dashed US format and
+  only appears for `+1` numbers.
+- Dorks now cover E.164, international and local number formats instead of E.164/national digits only.
+- A cached plain lookup no longer suppresses `--geo`/`--osint` output requested later; OSINT/breach data is
+  always fetched live.
+- HTML breach reports escape all values.
+
+-----
+
 ## [2.3.0] - 2026-09-20
 
 ### 🔧 Maintenance Release - Bug Fixes, Cross-Platform Support, Dormant Features
