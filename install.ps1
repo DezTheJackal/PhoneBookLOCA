@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    PhoneBookLOCA v2.3.0 - Native Windows Installer (PowerShell)
+    PhoneBookLOCA v2.3.1 - Native Windows Installer (PowerShell)
     Original tool by: DezTheJackal
 
 .DESCRIPTION
@@ -19,7 +19,7 @@ function Write-Err($msg)   { Write-Host "[!] $msg" -ForegroundColor Red }
 
 Write-Host ""
 Write-Host "===================================================" -ForegroundColor Cyan
-Write-Host "  PhoneBookLOCA v2.3.0 - Windows Installer          " -ForegroundColor Magenta
+Write-Host "  PhoneBookLOCA v2.3.1 - Windows Installer          " -ForegroundColor Magenta
 Write-Host "===================================================" -ForegroundColor Cyan
 Write-Host ""
 
