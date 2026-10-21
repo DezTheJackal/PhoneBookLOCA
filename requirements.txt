@@ -1,4 +1,4 @@
-# PhoneBookLOCA v2.3 Requirements
+# PhoneBookLOCA v2.3.1 Requirements
 # Maintained by: DezTheJackal (core) / 0xb0rn3 (v1.x contributions)
 
 # Core dependencies (required)
