@@ -501,11 +501,20 @@ class PhoneIntel:
 
         breach = self.check_breaches(parsed)
 
+        # Free open-source tools to run locally for deeper phone OSINT.
+        open_source_tools = [
+            {'name': 'PhoneInfoga', 'url': 'https://github.com/sundowndev/phoneinfoga',
+             'note': f'phoneinfoga scan -n {e164}'},
+            {'name': 'Ignorant', 'url': 'https://github.com/megadose/ignorant',
+             'note': 'checks which sites a phone number is registered on'},
+        ]
+
         return {
             'search_dorks': dorks,
             'search_links': search_links,
             'lookup_services': lookup_services,
             'messaging_checks': messaging,
+            'open_source_tools': open_source_tools,
             'breach_check': breach['manual_links'][0]['url'],
             'breach': breach,
             'go_scraper': self._run_go_scraper(number),
@@ -527,13 +536,13 @@ class PhoneIntel:
         e164 = phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
         digits = e164.lstrip('+')
 
+        # Free manual lookups only (no paid platforms). HIBP's site is free to search
+        # but only indexes phone numbers for a few breaches (e.g. Facebook 2021).
         manual_links = [
-            {'name': 'Intelligence X', 'url': f"https://intelx.io/?s={quote(e164)}",
-             'note': 'Search across leaks/dark web archives (account may be required to view results)'},
             {'name': 'Have I Been Pwned', 'url': 'https://haveibeenpwned.com/',
-             'note': f'Paste {e164} into the search box (phone coverage is limited, e.g. the 2021 Facebook leak)'},
-            {'name': 'LeakCheck', 'url': 'https://leakcheck.io/',
-             'note': f'Search {digits} as a phone number (login required for full results)'},
+             'note': f'Free. Paste {e164} into the search box (phone coverage is limited, e.g. the 2021 Facebook leak)'},
+            {'name': 'Max Intel Phone Lookup', 'url': 'https://maxintel.org/phone.html',
+             'note': f'Free, no signup. Enter {e164} to open 20+ reverse-lookup and spam-report sources'},
         ]
 
         sources = [
@@ -948,6 +957,10 @@ identify or attribute the number to a person. Verify before relying on it.</p>
             print("  Messaging checks:")
             for name, u in o['messaging_checks'].items():
                 print(f"    {name}: {u}")
+        if o.get('open_source_tools'):
+            print("  Open-source tools:")
+            for t in o['open_source_tools']:
+                print(f"    {t['name']}: {t['url']}")
         gs = o.get('go_scraper', {})
         if gs.get('status') == 'not built':
             print(f"  {Y}[i]{W} {gs['note']}")
@@ -978,6 +991,9 @@ identify or attribute the number to a person. Verify before relying on it.</p>
         if o.get('messaging_checks'):
             body += "\n\nMessaging checks:\n" + "\n".join(
                 f"{n}: {u}" for n, u in o['messaging_checks'].items())
+        if o.get('open_source_tools'):
+            body += "\n\nOpen-source tools:\n" + "\n".join(
+                f"{t['name']}: {t['url']}" for t in o['open_source_tools'])
         console.print(Panel.fit(body, title="OSINT Leads", border_style="magenta"))
 
         b = o.get('breach')
