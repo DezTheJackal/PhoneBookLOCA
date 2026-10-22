@@ -95,6 +95,55 @@ def data_file(name):
     return None
 
 
+def find_list_file(name):
+    """Locate a numbers file from just its name.
+
+    Search order (first folder with a match wins, not recursive): current folder,
+    the script's folder, home, ~/Documents, ~/Desktop, ~/Downloads, ~/.phonebookloca.
+    A name without an extension also tries '<name>.txt'. Absolute paths and ~/paths
+    are used as given. Returns (matches, folders_searched).
+    """
+    raw = os.path.expanduser(str(name).strip().strip('\'"'))
+    names = [raw] + ([raw + '.txt'] if not Path(raw).suffix else [])
+    home = Path.home()
+    folders = []
+    for d in (Path.cwd(), APP_DIR, home, home / 'Documents', home / 'Desktop',
+              home / 'Downloads', home / '.phonebookloca'):
+        if d not in folders:
+            folders.append(d)
+
+    for nm in names:                      # an exact-name match beats the '.txt' fallback
+        candidates = [Path(nm)] if Path(nm).is_absolute() else [d / nm for d in folders]
+        matches, seen = [], set()
+        for c in candidates:
+            try:
+                if c.is_file() and c.resolve() not in seen:
+                    seen.add(c.resolve())
+                    matches.append(c)
+            except OSError:
+                continue
+        if matches:
+            return matches, folders
+    return [], folders
+
+
+def resolve_number_file(name):
+    """Return the path of a numbers file given only its name (see find_list_file).
+    Prints which file is used when it was not found at the literal path, and warns
+    if the same name exists in several folders. Raises FileNotFoundError if missing."""
+    matches, folders = find_list_file(name)
+    if not matches:
+        where = ", ".join(str(f) for f in folders)
+        raise FileNotFoundError(f"'{name}' not found. Looked in: {where}")
+    chosen = matches[0]
+    if str(chosen) != str(name) and chosen.resolve() != Path(os.path.expanduser(str(name))).resolve():
+        print(f"{Y}[i]{W} Using {chosen}")
+    if len(matches) > 1:
+        others = ", ".join(str(m) for m in matches[1:])
+        print(f"{Y}[!]{W} Same file name also found in: {others} - using the first one above")
+    return str(chosen)
+
+
 def haversine_km(lat1, lon1, lat2, lon2):
     """Great-circle distance between two points, in kilometers."""
     r = 6371.0
@@ -1382,7 +1431,7 @@ h1{{color:#f0f}}</style></head><body>
                         print(f"{Y}[!]{W} Usage: le-mode --batch <file>\n")
                         continue
                     try:
-                        nums = self.read_number_file(arg)
+                        nums = self.read_number_file(resolve_number_file(arg))
                     except OSError as e:
                         print(f"{R}[!]{W} Error: {e}\n")
                         continue
@@ -1397,7 +1446,7 @@ h1{{color:#f0f}}</style></head><body>
                 if low.startswith('batch '):
                     file = cmd[6:].strip()
                     try:
-                        with open(file, encoding='utf-8') as f:
+                        with open(resolve_number_file(file), encoding='utf-8') as f:
                             nums = [line.strip() for line in f if line.strip()]
                         self.batch(nums)
                     except OSError as e:
@@ -1466,7 +1515,7 @@ def main():
     if args.le_mode:
         if args.batch:
             try:
-                nums = intel.read_number_file(args.batch)
+                nums = intel.read_number_file(resolve_number_file(args.batch))
             except OSError as e:
                 print(f"Error: {e}")
                 sys.exit(1)
@@ -1477,7 +1526,7 @@ def main():
 
     if args.batch:
         try:
-            with open(args.batch, encoding='utf-8') as f:
+            with open(resolve_number_file(args.batch), encoding='utf-8') as f:
                 nums = [line.strip() for line in f if line.strip()]
         except OSError as e:
             print(f"Error: {e}")
