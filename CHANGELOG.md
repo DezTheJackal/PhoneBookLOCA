@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   number through the full LE flow (geolocation, porting, OSINT, breach check), creates one case per number
   (`<case>-001`, `-002`, …), and writes a combined summary (`LE_Summary_*.csv/.html/.json`). Blank lines,
   `#` comments and duplicates are skipped; bad numbers are logged in the summary and the run continues.
+  Also available in interactive mode as `le-mode --batch numbers.txt`.
   `--le-mode` and `--batch` still behave exactly as before when used on their own.
 
 ### Fixed
