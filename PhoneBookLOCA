@@ -1356,7 +1356,7 @@ h1{{color:#f0f}}</style></head><body>
 
     def interactive(self):
         self.banner()
-        print("Commands: <number> | geo <number> | osint <number> | batch <file> | le-mode | help | quit\n")
+        print("Commands: <number> | geo <number> | osint <number> | batch <file> | le-mode [--batch <file>] | help | quit\n")
 
         while True:
             try:
@@ -1371,6 +1371,22 @@ h1{{color:#f0f}}</style></head><body>
                     continue
                 if low == 'le-mode':
                     self.le_mode()
+                    continue
+                if low.startswith('le-mode '):
+                    # "le-mode --batch FILE" or "le-mode FILE": LE mode over a number list
+                    arg = cmd[8:].strip()
+                    if arg.lower().startswith('--batch'):
+                        arg = arg[7:].strip()
+                    arg = os.path.expanduser(arg.strip('\'"'))
+                    if not arg:
+                        print(f"{Y}[!]{W} Usage: le-mode --batch <file>\n")
+                        continue
+                    try:
+                        nums = self.read_number_file(arg)
+                    except OSError as e:
+                        print(f"{R}[!]{W} Error: {e}\n")
+                        continue
+                    self.le_batch(nums)
                     continue
                 if low.startswith('geo '):
                     self.lookup(cmd[4:].strip(), enhanced=True)
@@ -1401,7 +1417,7 @@ Commands:
   osint <number>   - Passive OSINT leads (dorks, lookup URLs, optional Go scraper)
   batch <file>     - Analyze multiple numbers, saves a risk-scored JSON report
   le-mode          - Law enforcement case mode (JSON/CSV/HTML export)
-                     (from the shell: --le-mode --batch numbers.txt runs it on a whole list)
+                     le-mode --batch <file> runs it on a whole list of numbers
   help             - Show this
   quit             - Exit
 
