@@ -1,4 +1,3 @@
-
 # 📱 PhoneBookLOCA v2.3.1
 
 <div align="center">
@@ -75,6 +74,13 @@ Only the OSINT section changed — every command and flag works exactly as befor
 ```
 
 It also works inside interactive mode: `PhoneBook> le-mode --batch numbers.txt`.
+
+**You only need the file name.** `--batch` (with or without `--le-mode`) and the interactive `batch` /
+`le-mode --batch` commands look for the file in: the current folder, the tool's folder, your home folder,
+`~/Documents`, `~/Desktop`, `~/Downloads` and `~/.phonebookloca` (first match wins, not recursive). The
+extension is optional (`numbers` finds `numbers.txt`). The tool prints `Using <path>` when it found the file
+somewhere other than the path you typed, and warns if the same name exists in several folders. Full paths and
+`~/paths` still work exactly as before.
 
 `numbers.txt` has one number per line in international format (`+27821234567`). Blank lines, `#` comments
 and duplicates are ignored; Windows line endings are fine. You answer the case questions **once** (case
