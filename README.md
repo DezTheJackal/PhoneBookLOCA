@@ -1,3 +1,4 @@
+
 # 📱 PhoneBookLOCA v2.3.1
 
 <div align="center">
@@ -72,6 +73,8 @@ Only the OSINT section changed — every command and flag works exactly as befor
 ```bash
 ./PhoneBookLOCA --le-mode --batch numbers.txt
 ```
+
+It also works inside interactive mode: `PhoneBook> le-mode --batch numbers.txt`.
 
 `numbers.txt` has one number per line in international format (`+27821234567`). Blank lines, `#` comments
 and duplicates are ignored; Windows line endings are fine. You answer the case questions **once** (case
@@ -292,6 +295,7 @@ PhoneBook> geo +14155552671
 PhoneBook> osint +14155552671
 PhoneBook> batch numbers.txt
 PhoneBook> le-mode
+PhoneBook> le-mode --batch numbers.txt
 PhoneBook> help
 PhoneBook> quit
 ```
