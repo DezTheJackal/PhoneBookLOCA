@@ -30,6 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Messaging-app links (`wa.me`, `t.me`, `signal.me`) and clickable Google search links for each dork.
 - Recommendation added to LE reports when a number appears in a breach.
 
+- **LE mode over a number list**: `--le-mode --batch numbers.txt` asks the case details once, runs every
+  number through the full LE flow (geolocation, porting, OSINT, breach check), creates one case per number
+  (`<case>-001`, `-002`, …), and writes a combined summary (`LE_Summary_*.csv/.html/.json`). Blank lines,
+  `#` comments and duplicates are skipped; bad numbers are logged in the summary and the run continues.
+  `--le-mode` and `--batch` still behave exactly as before when used on their own.
+
 ### Fixed
 - Truecaller link used the numeric calling code (`/search/27/...`); it now uses the ISO region
   (`/search/za/...`).
