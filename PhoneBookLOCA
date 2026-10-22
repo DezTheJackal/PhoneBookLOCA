@@ -1129,6 +1129,16 @@ identify or attribute the number to a person. Verify before relying on it.</p>
         if not result:
             return
 
+        self._le_finalize(result, case_num, officer, agency, case_type, priority)
+
+        print(f"\n{Y}[*]{W} Export format: 1) JSON  2) CSV  3) HTML  4) All  5) Skip")
+        choice = input("Choice [1]: ").strip() or "1"
+        self._le_export(result, case_num, choice)
+
+    # ----------------------------------------------- LE mode: number list
+
+    def _le_finalize(self, result, case_num, officer, agency, case_type, priority):
+        """Attach case info, recommendations and legal notice to an LE result."""
         result['case_info'] = {
             'case_number': case_num, 'officer': officer, 'agency': agency,
             'case_type': case_type, 'priority': priority,
@@ -1139,19 +1149,171 @@ identify or attribute the number to a person. Verify before relying on it.</p>
         if result['carrier'] in self.carrier_contacts:
             result['carrier_legal_contact'] = self.carrier_contacts[result['carrier']]
 
-        print(f"\n{Y}[*]{W} Export format: 1) JSON  2) CSV  3) HTML  4) All  5) Skip")
-        choice = input("Choice [1]: ").strip() or "1"
-
+    def _le_export(self, result, case_num, choice):
+        """Write the per-number LE report(s); returns the file paths written."""
         report_dir = self.cache_dir / "reports"
-        report_dir.mkdir(exist_ok=True)
+        report_dir.mkdir(parents=True, exist_ok=True)
         stem = report_dir / f"LE_Report_{case_num}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-
+        written = []
         if choice in ("1", "4"):
             self._export_json(result, stem.with_suffix('.json'))
+            written.append(stem.with_suffix('.json'))
         if choice in ("2", "4"):
             self._export_csv(result, stem.with_suffix('.csv'))
+            written.append(stem.with_suffix('.csv'))
         if choice in ("3", "4"):
             self._export_html(result, stem.with_suffix('.html'))
+            written.append(stem.with_suffix('.html'))
+        return written
+
+    @staticmethod
+    def read_number_file(path):
+        """Read one number per line; skips blank lines and '#' comments, drops duplicates."""
+        numbers = []
+        with open(path, encoding='utf-8-sig') as f:
+            for line in f:
+                num = line.strip()
+                if num and not num.startswith('#') and num not in numbers:
+                    numbers.append(num)
+        return numbers
+
+    @staticmethod
+    def _breach_label(result):
+        breach = (result.get('osint') or {}).get('breach') or {}
+        if breach.get('breached'):
+            return f"BREACHED ({breach['breach_count']})"
+        statuses = [s['status'] for s in breach.get('sources', [])]
+        if statuses and any(st == 'clean' for st in statuses):
+            return "no breach found"
+        return "not checked"
+
+    def le_batch(self, numbers):
+        """LE mode over a list of numbers: case details asked ONCE, one case +
+        full LE report set per number, then one summary table for the whole list."""
+        self.banner()
+        print(f"{R}[LE] LAW ENFORCEMENT MODE - NUMBER LIST ({len(numbers)} numbers){W}")
+        print("Each number becomes its own case: <Case Number>-001, -002, ...\n")
+
+        case_base = input("Case Number: ").strip()
+        officer = input("Officer Name: ").strip()
+        agency = input("Agency: ").strip()
+        case_type = input("Case Type (missing_person/trafficking/fraud/other) [other]: ").strip() or "other"
+        priority = input("Priority (low/medium/high) [medium]: ").strip() or "medium"
+        if not all([case_base, officer, agency]) or not numbers:
+            print(f"\n{R}[!]{W} Case number, officer, agency and at least one number are required\n")
+            return
+
+        print(f"\n{Y}[*]{W} Export format for every number: 1) JSON  2) CSV  3) HTML  4) All  5) Skip")
+        choice = input("Choice [4]: ").strip() or "4"
+
+        rows = []
+        try:
+            for i, number in enumerate(numbers, 1):
+                case_id = f"{case_base}-{i:03d}"
+                print(f"\n{C}{'=' * 60}{W}\n{C}[{i}/{len(numbers)}]{W} {number}  ->  case {case_id}")
+                row = {'item': i, 'case_id': case_id, 'number': number, 'status': 'error',
+                       'carrier': '', 'location': '', 'line_type': '', 'porting': '',
+                       'geo_precision': '', 'breach': '', 'reports': ''}
+                try:
+                    try:
+                        c = self.db.conn.cursor()
+                        c.execute('''INSERT INTO le_cases (case_number, number, officer, agency, case_type, priority, created, status)
+                                     VALUES (?,?,?,?,?,?,?,?)''',
+                                  (case_id, number, officer, agency, case_type, priority,
+                                   datetime.now().isoformat(), 'active'))
+                        self.db.conn.commit()
+                    except sqlite3.IntegrityError:
+                        print(f"{Y}[!]{W} Case {case_id} already exists - continuing")
+
+                    result = self.lookup(number, use_cache=False, enhanced=True, osint=True)
+                    if not result:
+                        row['status'] = 'invalid number'
+                    else:
+                        self._le_finalize(result, case_id, officer, agency, case_type, priority)
+                        files = self._le_export(result, case_id, choice)
+                        port = (result.get('enhanced') or {}).get('porting') or {}
+                        breach = (result.get('osint') or {}).get('breach') or {}
+                        row.update({
+                            'status': 'ok',
+                            'carrier': result.get('carrier', ''),
+                            'location': result.get('location', ''),
+                            'line_type': result.get('type', ''),
+                            'porting': (f"likely ({port['confidence']}%)" if port.get('likely_ported')
+                                        else 'unlikely') if port else '',
+                            'geo_precision': (result.get('enhanced') or {}).get('precision', ''),
+                            'breach': self._breach_label(result),
+                            'reports': ' | '.join(Path(f).name for f in files + [Path(f) for f in breach.get('report_files', [])]),
+                        })
+                except Exception as e:  # noqa: BLE001 - one bad number must not stop the list
+                    log.debug("LE batch item failed", exc_info=True)
+                    row['status'] = f'error: {e}'
+                    print(f"{R}[!]{W} {number}: {e}")
+                rows.append(row)
+        except KeyboardInterrupt:
+            print(f"\n{Y}[!]{W} Interrupted - writing summary for the {len(rows)} number(s) done so far")
+
+        self._le_summary(rows, case_base, officer, agency, case_type, priority, choice)
+
+    def _le_summary(self, rows, case_base, officer, agency, case_type, priority, choice):
+        """Print the end-of-run table and write the summary files."""
+        if not rows:
+            return
+        ok = sum(1 for r in rows if r['status'] == 'ok')
+        hits = sum(1 for r in rows if r['breach'].startswith('BREACHED'))
+
+        print(f"\n{C}{'=' * 60}{W}\n{G}[+]{W} LE LIST SUMMARY - case {case_base}")
+        print(f"  Numbers: {len(rows)}   Processed OK: {ok}   Breached: {hits}\n")
+        header = f"  {'#':<3} {'Number':<16} {'Status':<15} {'Carrier':<18} {'Type':<13} {'Breach':<16}"
+        print(header)
+        print('  ' + '-' * (len(header) - 2))
+        for r in rows:
+            print(f"  {r['item']:<3} {r['number']:<16} {r['status'][:14]:<15} {r['carrier'][:17]:<18} "
+                  f"{r['line_type'][:12]:<13} {r['breach']:<16}")
+
+        report_dir = self.cache_dir / "reports"
+        report_dir.mkdir(parents=True, exist_ok=True)
+        stem = report_dir / f"LE_Summary_{case_base}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        fields = ['item', 'case_id', 'number', 'status', 'carrier', 'location', 'line_type',
+                  'porting', 'geo_precision', 'breach', 'reports']
+        saved = []
+        try:
+            with open(stem.with_suffix('.csv'), 'w', newline='', encoding='utf-8') as f:
+                w = csv.DictWriter(f, fieldnames=fields)
+                w.writeheader()
+                w.writerows(rows)
+            saved.append(stem.with_suffix('.csv'))
+
+            esc = html.escape
+            body = "".join(
+                "<tr>" + "".join(f"<td>{esc(str(r[k]))}</td>" for k in fields) + "</tr>" for r in rows)
+            head = "".join(f"<th>{esc(k)}</th>" for k in fields)
+            page = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>PhoneBookLOCA LE Summary - {esc(case_base)}</title>
+<style>body{{font-family:'Courier New',monospace;background:#0a0014;color:#7ef9ff;padding:2em}}
+h1{{color:#ff00e6}}table{{border-collapse:collapse;width:100%}}th,td{{border:1px solid #00f0ff55;padding:6px 10px;text-align:left;font-size:13px}}
+th{{color:#ff6bf0}}</style></head><body>
+<h1>PhoneBookLOCA :: LE Summary - {esc(case_base)}</h1>
+<p>Officer: {esc(officer)} | Agency: {esc(agency)} | Type: {esc(case_type)} | Priority: {esc(priority)}<br>
+Generated: {esc(datetime.now().isoformat())} | Numbers: {len(rows)} | Processed OK: {ok} | Breached: {hits}</p>
+<table><tr>{head}</tr>{body}</table>
+<p><em>Public data only - for real-time tracking or subscriber records, obtain a warrant/subpoena.
+Breach presence shows a number appeared in leaked data; it does not by itself identify its user.</em></p>
+</body></html>"""
+            with open(stem.with_suffix('.html'), 'w', encoding='utf-8') as f:
+                f.write(page)
+            saved.append(stem.with_suffix('.html'))
+
+            if choice in ("1", "4"):
+                with open(stem.with_suffix('.json'), 'w', encoding='utf-8') as f:
+                    json.dump({'case': case_base, 'officer': officer, 'agency': agency,
+                               'case_type': case_type, 'priority': priority,
+                               'generated': datetime.now().isoformat(), 'numbers': rows}, f, indent=2)
+                saved.append(stem.with_suffix('.json'))
+        except OSError as e:
+            print(f"{R}[!]{W} Could not write summary: {e}")
+        for f in saved:
+            print(f"{G}[+]{W} Summary saved: {f}")
+        print()
 
     def _export_json(self, report, path):
         with open(path, 'w', encoding='utf-8') as f:
@@ -1239,6 +1401,7 @@ Commands:
   osint <number>   - Passive OSINT leads (dorks, lookup URLs, optional Go scraper)
   batch <file>     - Analyze multiple numbers, saves a risk-scored JSON report
   le-mode          - Law enforcement case mode (JSON/CSV/HTML export)
+                     (from the shell: --le-mode --batch numbers.txt runs it on a whole list)
   help             - Show this
   quit             - Exit
 
@@ -1264,7 +1427,8 @@ def build_arg_parser():
     parser.add_argument('--geo', action='store_true', help='Enhanced geolocation, porting and history')
     parser.add_argument('--osint', action='store_true', help='Passive OSINT lead generation')
     parser.add_argument('--le-mode', action='store_true', help='Law enforcement case mode')
-    parser.add_argument('--batch', metavar='FILE', help='Batch-analyze numbers from a file (one per line)')
+    parser.add_argument('--batch', metavar='FILE',
+                        help='Batch-analyze numbers from a file (one per line); with --le-mode, runs LE mode on every number')
     parser.add_argument('--no-cache', action='store_true', help='Skip the local cache')
     parser.add_argument('--output', '-o', metavar='FILE', help='Save the result/report to this path')
     parser.add_argument('--verbose', '-v', action='store_true', help='Verbose diagnostic logging')
@@ -1284,7 +1448,15 @@ def main():
     intel = PhoneIntel()
 
     if args.le_mode:
-        intel.le_mode()
+        if args.batch:
+            try:
+                nums = intel.read_number_file(args.batch)
+            except OSError as e:
+                print(f"Error: {e}")
+                sys.exit(1)
+            intel.le_batch(nums)
+        else:
+            intel.le_mode()
         return
 
     if args.batch:
