@@ -67,6 +67,26 @@ Only the OSINT section changed — every command and flag works exactly as befor
 - **Fix:** a cached plain lookup no longer hides `--geo` / `--osint` sections requested afterwards, and
   OSINT/breach results are always fetched live rather than served from cache.
 
+### LE mode over a list of numbers
+
+```bash
+./PhoneBookLOCA --le-mode --batch numbers.txt
+```
+
+`numbers.txt` has one number per line in international format (`+27821234567`). Blank lines, `#` comments
+and duplicates are ignored; Windows line endings are fine. You answer the case questions **once** (case
+number, officer, agency, case type, priority, export format); then every number is run with geolocation,
+porting analysis, OSINT **and the breach check**.
+
+- Each number becomes its own case: `<Case Number>-001`, `-002`, … (case numbers must be unique).
+- Per number: the usual LE report set (JSON/CSV/HTML per your export choice) plus breach report files for
+  any number found in your breach data.
+- At the end: a summary table on screen and `LE_Summary_<case>_<timestamp>.csv/.html/.json` in
+  `~/.phonebookloca/reports/` — one row per number with status, carrier, location, line type, porting
+  likelihood, breach result and the report files created.
+- An invalid number or an error on one number is recorded in the summary and the run continues; Ctrl+C
+  stops early but still writes the summary for the numbers already done.
+
 ### Offline breach check (no API needed)
 
 Put breach/leak datasets you are authorised to hold into the breach folder — it is created automatically on
@@ -262,6 +282,9 @@ the live web-scraper results.
 # Law enforcement case mode (prompts for case info, exports JSON/CSV/HTML)
 ./PhoneBookLOCA --le-mode
 
+# Law enforcement mode over a list of numbers (case details asked once)
+./PhoneBookLOCA --le-mode --batch numbers.txt
+
 # Interactive mode
 ./PhoneBookLOCA
 PhoneBook> +14155552671
@@ -281,7 +304,7 @@ PhoneBook> quit
 | `--geo` | Enhanced geolocation, porting analysis, and history |
 | `--osint` | Passive OSINT lead generation |
 | `--le-mode` | Law enforcement case mode |
-| `--batch FILE` | Batch-analyze numbers from a file (one per line) |
+| `--batch FILE` | Batch-analyze numbers from a file (one per line). Combined with `--le-mode`, runs LE mode on every number |
 | `--no-cache` | Skip the local cache |
 | `--output`, `-o FILE` | Save the result/report to this path |
 | `--verbose`, `-v` | Verbose diagnostic logging (shows full tracebacks) |
