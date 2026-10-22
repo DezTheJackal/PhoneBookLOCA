@@ -35,6 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`<case>-001`, `-002`, …), and writes a combined summary (`LE_Summary_*.csv/.html/.json`). Blank lines,
   `#` comments and duplicates are skipped; bad numbers are logged in the summary and the run continues.
   Also available in interactive mode as `le-mode --batch numbers.txt`.
+- **Number files can be given by name only** (`--batch`, `--le-mode --batch`, interactive `batch` and
+  `le-mode --batch`): searches the current folder, the tool's folder, home, Documents, Desktop, Downloads and
+  `~/.phonebookloca`; `.txt` is optional; prints which file was used and warns on duplicate names. Full paths
+  behave as before.
   `--le-mode` and `--batch` still behave exactly as before when used on their own.
 
 ### Fixed
