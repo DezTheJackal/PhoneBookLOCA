@@ -1,4 +1,4 @@
-# 📱 PhoneBookLOCA v2.3.1
+# 📱 PhoneBookLOCA v2.4.0
 
 <div align="center">
 
@@ -13,7 +13,7 @@
 
 *For educational, authorized security research, and law enforcement use only*
 
-[Features](#-features) • [Installation](#-installation) • [Usage](#-usage) • [What's New](#-whats-new-in-v231)
+[Features](#-features) • [Installation](#-installation) • [Usage](#-usage) • [What's New](#-whats-new-in-v240)
 
 </div>
 
@@ -38,10 +38,33 @@ key, and public web lookups) — it does not access carrier networks or provide 
 | **v2.2** | Worldwide area-code database, porting detection | **DezTheJackal** |
 | **v2.3** | Confidence/risk scoring, OSINT command wired to the Go scraper, CSV/HTML export, cross-platform (Windows/macOS), bug fixes | **DezTheJackal** |
 | **v2.3.1** | OSINT upgrade: corrected lookup links, messaging-app checks, data-breach check with its own report files | **DezTheJackal** |
+| **v2.4.0** | Free AI briefings (Gemini/Groq), `setup_apis.py` key wizard, OpenCellID call fixed, free-only API policy | **DezTheJackal** |
 
 -----
 
-## ✨ What's New in v2.3.1
+## ✨ What's New in v2.4.0
+
+**Free-only APIs.** Every API PhoneBookLOCA integrates with is free, and `setup_apis.py` only offers free
+services.
+
+- **`setup_apis.py` — setup wizard.** Shows the exact link and the steps to copy each free key *before*
+  asking for it, optionally opens the page in your browser, takes the key hidden, verifies it live, picks a
+  working model automatically and saves it. Also `--links`, `--status`, `--reset`, `--only`.
+- **AI briefings** (`--ai`, interactive `ai <number>`, and a case briefing after `--le-mode --batch FILE --ai`).
+  `--ai` implies `--geo --osint`. Uses Gemini or Groq (whichever you configured; the other is an automatic
+  fallback). **Privacy by design:** the phone number, case number, officer, agency and breach-file names are
+  never sent — only non-identifying metadata (carrier, line type, country, porting/geolocation scores, breach
+  *counts* and exposed field *names*). Each briefing is saved to `~/.phonebookloca/reports/ai/` together with
+  the exact data that was sent. Google's free tier may use submitted data to improve its products, which is
+  why nothing identifying is ever included.
+- **Fix: OpenCellID.** The old tower lookup sent parameters OpenCellID does not accept; it now uses the
+  documented `BBOX` form (and requests at most 5 cells to save your free credits). API keys are scrubbed from
+  verbose error messages. Note OpenCellID only serves this lookup to whitelisted keys.
+- **Config file.** Keys saved by the wizard are loaded automatically; real environment variables win.
+- **Paid breach APIs are no longer advertised** (HIBP/LeakCheck need paid keys); the offline breach-file
+  check and the free manual links remain.
+
+### Earlier: v2.3.1
 
 Only the OSINT section changed — every command and flag works exactly as before (`--osint`, the
 `osint <number>` command, and `--le-mode` all pick up the new behavior automatically).
@@ -50,16 +73,12 @@ Only the OSINT section changed — every command and flag works exactly as befor
   code, Whitepages uses its dashed US format (and only appears for `+1` numbers), and dorks search the
   number in E.164, international *and* local formats at once. Each dork also gets a clickable Google link.
 - **Messaging-app checks** — direct `wa.me`, `t.me` and `signal.me` links for the number.
-- **Data-breach check — works with no API at all.** It runs inside OSINT and has two layers:
-  1. **Offline (no API, no network):** searches breach files you already hold, in
-     `~/.phonebookloca/breach_data/` (see below).
-  2. **Online (optional):** with keys set it also queries
-     [Have I Been Pwned](https://haveibeenpwned.com/API/v3) and
-     [LeakCheck](https://wiki.leakcheck.io/en/api/api-v2-pro) (both paid). Free manual links —
-     [Have I Been Pwned](https://haveibeenpwned.com/) and
-     [Max Intel Phone Lookup](https://maxintel.org/phone.html) — are always shown, along with the
-     open-source tools [PhoneInfoga](https://github.com/sundowndev/phoneinfoga) and
-     [Ignorant](https://github.com/megadose/ignorant) for deeper local recon. No paid platform is linked.
+- **Data-breach check — works with no API at all.** It runs inside OSINT and searches breach files you
+  already hold, offline, in `~/.phonebookloca/breach_data/` (see below). Free manual links —
+  [Have I Been Pwned](https://haveibeenpwned.com/) and
+  [Max Intel Phone Lookup](https://maxintel.org/phone.html) — are always shown, along with the
+  open-source tools [PhoneInfoga](https://github.com/sundowndev/phoneinfoga) and
+  [Ignorant](https://github.com/megadose/ignorant) for deeper local recon. No paid platform is linked.
 - **Own output files** — if a breach is found (offline or online), `BREACH_<number>_<timestamp>.json` and
   `.html` are written to `~/.phonebookloca/reports/breach/`. Nothing is written when no breach is found.
   Only the source/file name, line number, date and the *names* of exposed fields are saved — never leaked
@@ -119,21 +138,8 @@ gzip-compressed versions (`.csv.gz`, …), including subfolders (up to 500 files
 - The matching line is **never stored** — only file name, line number and CSV column names.
 - Keep the folder outside the git repo (the repo's `.gitignore` also excludes `breach_data/` and `reports/`).
 
-### Online breach check (optional, needs API keys)
-
-```bash
-# Linux/macOS
-export HIBP_API_KEY="your_hibp_key"          # https://haveibeenpwned.com/API/Key (paid)
-export LEAKCHECK_API_KEY="your_leakcheck_key" # LeakCheck account settings (paid)
-
-# Windows (PowerShell)
-$env:HIBP_API_KEY = "your_hibp_key"
-$env:LEAKCHECK_API_KEY = "your_leakcheck_key"
-```
-
-Coverage notes: the offline check is only as good as the datasets you give it. HIBP only indexes phone numbers for a few breaches (notably the 2021 Facebook leak), so a
-"clean" HIBP result is not proof a number was never exposed. A breach hit shows the number appeared in
-leaked data — it does not by itself identify who uses the number.
+Coverage note: the offline check is only as good as the datasets you give it. A breach hit shows the number
+appeared in leaked data — it does not by itself identify who uses the number.
 
 ### Earlier: v2.3.0
 
@@ -192,7 +198,8 @@ bugs, and making the tool run cleanly on Windows and macOS, not just Linux.
 | Category | Capabilities |
 |---|---|
 | **Core lookup** | Carrier, line type (mobile/VoIP/toll-free/etc.), timezone, validity — via Google's `libphonenumber` |
-| **Geolocation** | Area-code-level location with confidence score; optional OpenCellID integration for real cell-tower data (±5km vs ±50km) |
+| **Geolocation** | Area-code-level location with confidence score; optional OpenCellID tower data for whitelisted keys |
+| **AI briefings** | `--ai` / `ai <number>` / LE-list briefings from a free Gemini or Groq key; the number is never sent |
 | **Porting analysis** | Weighted confidence score from VoIP type, MVNO carrier match, and historical carrier changes |
 | **Batch analysis** | Geographic clustering, carrier concentration, VoIP ratio, 0-100 risk score, auto-saved JSON report |
 | **OSINT leads** | Multi-format Google dorks + links, lookup services, WhatsApp/Telegram/Signal links, data-breach check with report files, optional Go-based web scraper |
@@ -245,17 +252,27 @@ rich>=13.0.0            # Enhanced terminal UI (optional, recommended)
 colorama>=0.4.6         # Windows-only, for correct ANSI colors
 ```
 
-### Optional: OpenCellID setup
+### Optional: free API keys (AI briefings, OpenCellID)
 
-Free registration at https://opencellid.org/ gives 1,000 requests/day of real cell-tower data:
+Run the setup wizard — it shows the exact page to open for each key *before* asking for it, checks the key
+against the live service, picks a working model, and saves everything where PhoneBookLOCA loads it
+automatically:
 
 ```bash
-# Linux/macOS
-export OPENCELLID_API_KEY="your_key_here"
-
-# Windows (PowerShell)
-$env:OPENCELLID_API_KEY = "your_key_here"
+python3 setup_apis.py            # guided setup (Windows: python setup_apis.py)
+python3 setup_apis.py --links    # just print the links and steps
+python3 setup_apis.py --status   # what is configured, and does it still work?
 ```
+
+| Service | Used for | Where to get the free key | Cost |
+|---|---|---|---|
+| Google Gemini | AI briefings | https://aistudio.google.com/apikey → *Create API key* | Free tier, no card |
+| Groq | AI briefings (fallback) | https://console.groq.com/keys → *Create API Key* (shown once) | Free tier, no card |
+| OpenCellID *(optional)* | Cell towers near the area-code location | https://opencellid.org/ → sign up → Dashboard → access token | Free, 1,000 requests/day |
+
+Keys are saved in `~/.phonebookloca/config.json` (owner-only permissions on Linux/macOS). Real environment
+variables (`GEMINI_API_KEY`, `GROQ_API_KEY`, `OPENCELLID_API_KEY`) override the file. Only free services are
+supported — nothing paid is ever offered.
 
 ### Optional: build the Go OSINT scraper
 
@@ -369,8 +386,13 @@ portals. This tool does not substitute for that process.
 originally assigned to, which is wrong if the number has been ported. Check `--geo`'s porting-confidence
 score, and add missing coverage to `data/area_codes.json` (no code changes needed).
 
-**OpenCellID not returning towers** — confirm `OPENCELLID_API_KEY` is set (`echo $OPENCELLID_API_KEY` /
-`echo $env:OPENCELLID_API_KEY`) and that you have quota remaining (1,000/day on the free tier).
+**OpenCellID not returning towers** — run `python3 setup_apis.py --status`. OpenCellID only serves the tower
+lookup to *whitelisted* keys (free for apps that contribute data); a normal key gets HTTP 403 and the tool
+skips tower data (run with `--verbose` to see this). Everything else works without it.
+
+**`--ai` says no AI key is configured** — run `python3 setup_apis.py` and add a free Gemini or Groq key.
+A "rate limit" message means you hit the free tier's per-minute/daily cap; wait a minute and retry (the tool
+automatically falls back to the other provider if you configured both).
 
 **Batch analysis shows no patterns** — pattern detection needs more than 5 valid numbers to trigger; with
 fewer, an absence of flagged patterns is expected, not a bug.
