@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 -----
 
+## [2.4.0] - 2026-10-22
+
+### 🤖 Free AI briefings + API setup wizard
+
+**Developed by:** DezTheJackal. Policy: every integrated API must be free.
+
+### Added
+- **`setup_apis.py`**: cross-platform (stdlib-only) wizard for the free keys. For each service it prints the
+  exact page and steps before asking for the key, can open the page in the browser, reads the key hidden,
+  verifies it against the live service, auto-selects a working model, and saves to
+  `~/.phonebookloca/config.json` (0600 on POSIX, atomic write). Options: `--links`, `--status`, `--reset`,
+  `--only`, `--no-browser`, `--no-test`. Services: Google Gemini and Groq (AI), OpenCellID (optional).
+- **AI briefings**: `--ai` (single number; implies `--geo --osint`), `--le-mode --batch FILE --ai` (one case
+  briefing after the summary), `--le-mode --ai`, and interactive `ai <number>`. Gemini or Groq, with automatic
+  fallback to the other on failure/rate-limit and automatic model discovery. Only non-identifying metadata is
+  sent (never the number, case number, officer, agency or breach file names); the briefing is saved to
+  `~/.phonebookloca/reports/ai/` with the exact data sent.
+- Saved keys are loaded automatically at start-up; real environment variables take priority.
+
+### Fixed
+- OpenCellID `cell/getInArea` was called with `lat`/`lon`/`radius`, which the API does not accept; it now uses
+  the documented `BBOX` parameter with `limit=5`. HTTP 403 (key not whitelisted) and 429 (daily limit) are
+  handled quietly, and API keys are scrubbed from verbose error output.
+
+### Changed
+- HIBP / LeakCheck (paid) are no longer shown in output, docs or the wizard; the offline breach-file check and
+  free manual links remain. The code path stays dormant unless a key is set in the environment.
+
+-----
+
 ## [2.3.1] - 2026-10-21
 
 ### 🔎 OSINT Update - Accurate Links + Data-Breach Check
