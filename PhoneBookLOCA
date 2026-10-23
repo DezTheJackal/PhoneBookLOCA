@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PhoneBookLOCA v2.3.1 - Worldwide Phone OSINT Platform
+PhoneBookLOCA v2.4.0 - Worldwide Phone OSINT Platform
 Created by: DezTheJackal
 
 Usage:
@@ -34,7 +34,7 @@ from pathlib import Path
 from datetime import datetime
 from collections import Counter
 
-VERSION = "2.3.1"
+VERSION = "2.4.0"
 
 try:
     import phonenumbers
@@ -78,6 +78,66 @@ M = '\033[95m'
 W = '\033[0m'
 
 APP_DIR = Path(__file__).resolve().parent
+
+
+def config_path():
+    """File where setup_apis.py stores the free API keys."""
+    return Path.home() / ".phonebookloca" / "config.json"
+
+
+def load_config():
+    """Load API keys saved by setup_apis.py into the environment.
+    Real environment variables always win over the saved file."""
+    try:
+        with open(config_path(), encoding='utf-8') as f:
+            cfg = json.load(f)
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as e:
+        log.warning("Could not read %s: %s", config_path(), e)
+        return {}
+    if not isinstance(cfg, dict):
+        return {}
+    for k, v in cfg.items():
+        if isinstance(v, str) and v and k not in os.environ:
+            os.environ[k] = v
+    return cfg
+
+
+def scrub_secrets(text):
+    """Hide API keys/tokens that appear in URLs inside error messages."""
+    return re.sub(r'(?i)\b(key|token)=[^&\s\'")]+', r'\1=***', str(text))
+
+
+def pick_gemini_model(models):
+    """Choose the newest stable Gemini Flash model that supports generateContent.
+    Prefers stable names over '-preview' ones and plain Flash over Flash-Lite."""
+    best = None
+    for m in models or []:
+        name = (m.get('name') or '').replace('models/', '')
+        if 'generateContent' not in (m.get('supportedGenerationMethods') or []):
+            continue
+        mt = re.fullmatch(r'gemini-(\d+(?:\.\d+)?)-flash(-lite)?(-preview(?:-[\w.-]+)?)?', name)
+        if not mt:
+            continue
+        score = (0 if mt.group(3) else 1, float(mt.group(1)), 0 if mt.group(2) else 1)
+        if best is None or score > best[0]:
+            best = (score, name)
+    return best[1] if best else None
+
+
+def pick_groq_model(ids):
+    """Choose a general chat model from Groq's model list."""
+    ids = list(ids or [])
+    for want in ('llama-3.3-70b-versatile', 'llama-3.1-8b-instant',
+                 'openai/gpt-oss-20b', 'openai/gpt-oss-120b'):
+        if want in ids:
+            return want
+    skip = re.compile(r'whisper|guard|tts|playai|embed|distil|safeguard|orpheus', re.I)
+    for i in ids:
+        if not skip.search(i):
+            return i
+    return None
 
 
 def data_file(name):
@@ -309,6 +369,7 @@ class PhoneIntel:
         self.cache_dir = Path.home() / ".phonebookloca"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.db = Database(self.cache_dir / "intel.db")
+        load_config()   # API keys saved by setup_apis.py (real env vars take priority)
         self.opencellid_key = os.getenv('OPENCELLID_API_KEY')
         self.carrier_contacts = self._load_carrier_contacts()
 
@@ -484,28 +545,42 @@ class PhoneIntel:
         }
 
     def get_opencellid(self, lat, lon):
-        """Query OpenCellID for nearby towers, sorted by distance."""
+        """Query OpenCellID for towers in a ~5 km box around a point.
+
+        Uses the documented cell/getInArea endpoint (BBOX = latmin,lonmin,latmax,lonmax).
+        Each returned cell costs 1 credit of the free 1,000/day quota, so at most 5 are
+        requested. OpenCellID only serves this endpoint to whitelisted keys (free for apps
+        that contribute data); other keys get HTTP 403 and this simply returns [].
+        """
         if not self.opencellid_key:
             return []
+        d_lat = 0.045                                            # ~5 km
+        d_lon = d_lat / max(math.cos(math.radians(lat)), 0.2)
+        bbox = f"{lat - d_lat:.5f},{lon - d_lon:.5f},{lat + d_lat:.5f},{lon + d_lon:.5f}"
         try:
             resp = requests.get(
                 "https://opencellid.org/cell/getInArea",
-                params={'key': self.opencellid_key, 'lat': lat, 'lon': lon,
-                        'radius': 5000, 'format': 'json'},
+                params={'key': self.opencellid_key, 'BBOX': bbox, 'limit': 5, 'format': 'json'},
                 timeout=10,
             )
+            if resp.status_code == 403:
+                log.warning("OpenCellID: key is not whitelisted for cell/getInArea (HTTP 403) - tower data skipped")
+                return []
+            if resp.status_code == 429:
+                log.warning("OpenCellID: daily limit reached (HTTP 429) - tower data skipped")
+                return []
             resp.raise_for_status()
             cells = resp.json().get('cells', [])
-            for cell in cells:
-                try:
-                    cell['_distance_km'] = haversine_km(lat, lon, float(cell['lat']), float(cell['lon']))
-                except (KeyError, ValueError, TypeError):
-                    cell['_distance_km'] = 0
-            cells.sort(key=lambda c: c.get('_distance_km', 0))
-            return cells[:5]
-        except requests.RequestException as e:
-            log.warning("OpenCellID request failed: %s", e)
+        except (requests.RequestException, ValueError) as e:
+            log.warning("OpenCellID request failed: %s", scrub_secrets(e))
             return []
+        for cell in cells:
+            try:
+                cell['_distance_km'] = haversine_km(lat, lon, float(cell['lat']), float(cell['lon']))
+            except (KeyError, ValueError, TypeError):
+                cell['_distance_km'] = 0
+        cells.sort(key=lambda c: c.get('_distance_km', 0))
+        return cells[:5]
 
     # -------------------------------------------------------------- osint
 
@@ -1019,6 +1094,8 @@ identify or attribute the number to a person. Verify before relying on it.</p>
     def _display_breach_plain(self, b):
         print(f"\n{M}[*]{W} Data Breach Check:")
         for src in b['sources']:
+            if src['status'] == 'skipped' and src['service'] != 'Local breach files':
+                continue
             print(f"  {src['service']}: {src['status']} ({src['detail']})")
         if b['breached']:
             print(f"  {R}[!]{W} {b['breach_count']} breach record(s) found:")
@@ -1047,7 +1124,8 @@ identify or attribute the number to a person. Verify before relying on it.</p>
 
         b = o.get('breach')
         if b:
-            lines = [f"{s['service']}: {s['status']} ({s['detail']})" for s in b['sources']]
+            lines = [f"{s['service']}: {s['status']} ({s['detail']})" for s in b['sources']
+                     if not (s['status'] == 'skipped' and s['service'] != 'Local breach files')]
             if b['breached']:
                 lines.append(f"[red]{b['breach_count']} breach record(s) found:[/red]")
                 lines += [f"- {i['source']}: {i['name']} ({i.get('breach_date') or 'date n/a'})"
@@ -1145,9 +1223,235 @@ identify or attribute the number to a person. Verify before relying on it.</p>
 
         return report
 
+    # ------------------------------------------------------------------ AI
+
+    AI_SYSTEM = (
+        "You are an assistant for authorised OSINT and law-enforcement analysts. "
+        "You only see NON-IDENTIFYING metadata from a public-data phone lookup; the phone number, "
+        "case details and file names are deliberately withheld. Be factual and cautious: never guess "
+        "who owns a number, never invent data, and separate what the data shows from what it cannot "
+        "show. Note reliability limits where relevant (area-code geolocation is coarse and wrong for "
+        "ported numbers; a breach hit means the number appeared in leaked data, not who uses it). "
+        "End with 2-4 concrete, lawful next steps (for example a carrier legal-process request, "
+        "verifying breach records, corroborating sources). Plain text only, no markdown tables."
+    )
+    AI_USER_AGENT = f"PhoneBookLOCA/{VERSION}"
+
+    def ai_providers(self):
+        """Configured free AI providers, preferred one first."""
+        have = {'gemini': bool(os.getenv('GEMINI_API_KEY')), 'groq': bool(os.getenv('GROQ_API_KEY'))}
+        pref = (os.getenv('AI_PROVIDER') or '').strip().lower()
+        order = []
+        for name in ([pref] if pref in have else []) + ['gemini', 'groq']:
+            if have.get(name) and name not in order:
+                order.append(name)
+        return order
+
+    @staticmethod
+    def ai_facts(result):
+        """The ONLY data about a lookup that is ever sent to an AI provider.
+        Never included: the phone number, case number, officer, agency, file names."""
+        enh = result.get('enhanced') or {}
+        port = enh.get('porting') or {}
+        hist = enh.get('history') or {}
+        coords = enh.get('coordinates') or {}
+        breach = (result.get('osint') or {}).get('breach') or {}
+        facts = {
+            'country_or_region': result.get('location'),
+            'country_calling_code': result.get('country_code'),
+            'line_type': result.get('type'),
+            'carrier': result.get('carrier'),
+            'timezones': result.get('timezone'),
+        }
+        if enh:
+            facts['geolocation'] = {
+                'precision': enh.get('precision'),
+                'confidence_pct': enh.get('confidence'),
+                'area_code_match': (f"{coords.get('city')}, {coords.get('region')}" if coords else None),
+                'radius_km': enh.get('radius_km'),
+            }
+        if port:
+            facts['porting'] = {'likely_ported': port.get('likely_ported'),
+                                'confidence_pct': port.get('confidence'),
+                                'indicators': port.get('indicators')}
+        if hist:
+            facts['lookup_history'] = {'times_looked_up': hist.get('total_lookups'),
+                                       'carrier_changed': hist.get('carrier_changed')}
+        if breach:
+            facts['breach_check'] = {
+                'number_found_in_breach_data': breach.get('breached'),
+                'records_found': breach.get('breach_count'),
+                'exposed_field_names': sorted({c for b in breach.get('breaches', [])
+                                               for c in (b.get('data_classes') or [])}),
+                'sources_checked': [{'service': s.get('service'), 'status': s.get('status')}
+                                    for s in breach.get('sources', [])
+                                    if s.get('status') != 'skipped'],
+            }
+        return facts
+
+    @staticmethod
+    def ai_facts_from_rows(rows, case_type, priority):
+        """Non-identifying facts for a whole LE list: items are only numbered (no numbers, no case ids)."""
+        ok = [r for r in rows if r.get('status') == 'ok']
+        return {
+            'case_type': case_type, 'priority': priority,
+            'totals': {
+                'numbers': len(rows), 'processed_ok': len(ok),
+                'invalid_or_failed': len(rows) - len(ok),
+                'found_in_breach_data': sum(1 for r in ok if str(r.get('breach', '')).startswith('BREACHED')),
+                'likely_ported': sum(1 for r in ok if str(r.get('porting', '')).startswith('likely')),
+                'carriers': dict(Counter(r.get('carrier') for r in ok)),
+                'line_types': dict(Counter(r.get('line_type') for r in ok)),
+                'countries': dict(Counter(r.get('location') for r in ok)),
+            },
+            'items': [{'item': r['item'], 'status': r.get('status'), 'carrier': r.get('carrier'),
+                       'country': r.get('location'), 'line_type': r.get('line_type'),
+                       'porting': r.get('porting'), 'geo_precision': r.get('geo_precision'),
+                       'breach_result': r.get('breach')} for r in rows],
+        }
+
+    def _ai_http_error(self, name, resp):
+        try:
+            err = resp.json().get('error') or {}
+            detail = err.get('message') if isinstance(err, dict) else str(err)
+        except (ValueError, AttributeError):
+            detail = ''
+        hints = {400: 'request or key rejected', 401: 'key rejected - re-run setup_apis.py',
+                 403: 'access denied (key invalid, or API not enabled for it)',
+                 404: 'model not found - remove GEMINI_MODEL / GROQ_MODEL or re-run setup_apis.py',
+                 429: 'free-tier rate limit reached - wait a minute and retry'}
+        msg = hints.get(resp.status_code, f'HTTP {resp.status_code}')
+        if detail and resp.status_code != 429:
+            msg += f" ({scrub_secrets(detail)[:120]})"
+        return RuntimeError(f"{name}: {msg}")
+
+    def _ai_gemini(self, system, user):
+        key = os.getenv('GEMINI_API_KEY')
+        headers = {'x-goog-api-key': key, 'Content-Type': 'application/json',
+                   'User-Agent': self.AI_USER_AGENT}
+        base = "https://generativelanguage.googleapis.com/v1beta"
+        model = os.getenv('GEMINI_MODEL')
+        try:
+            if not model:
+                r = requests.get(f"{base}/models", headers=headers, params={'pageSize': 200}, timeout=15)
+                if r.status_code != 200:
+                    raise self._ai_http_error('gemini', r)
+                model = pick_gemini_model(r.json().get('models', [])) or 'gemini-flash-latest'
+            payload = {
+                'systemInstruction': {'parts': [{'text': system}]},
+                'contents': [{'role': 'user', 'parts': [{'text': user}]}],
+                'generationConfig': {'temperature': 0.2, 'maxOutputTokens': 2048},
+            }
+            r = requests.post(f"{base}/models/{model}:generateContent", headers=headers,
+                              json=payload, timeout=60)
+        except (requests.RequestException, ValueError) as e:
+            raise RuntimeError(f"gemini: network/response error ({scrub_secrets(e)[:100]})")
+        if r.status_code != 200:
+            raise self._ai_http_error('gemini', r)
+        try:
+            parts = r.json()['candidates'][0]['content']['parts']
+        except (ValueError, KeyError, IndexError, TypeError):
+            raise RuntimeError("gemini: empty or blocked response")
+        text = "".join(p.get('text', '') for p in parts if not p.get('thought')).strip()
+        if not text:
+            raise RuntimeError("gemini: empty response")
+        return text, model
+
+    def _ai_groq(self, system, user):
+        key = os.getenv('GROQ_API_KEY')
+        headers = {'Authorization': f'Bearer {key}', 'Content-Type': 'application/json',
+                   'User-Agent': self.AI_USER_AGENT}
+        base = "https://api.groq.com/openai/v1"
+        model = os.getenv('GROQ_MODEL')
+        try:
+            if not model:
+                r = requests.get(f"{base}/models", headers=headers, timeout=15)
+                if r.status_code != 200:
+                    raise self._ai_http_error('groq', r)
+                model = pick_groq_model([m.get('id') for m in r.json().get('data', [])
+                                         if m.get('id')]) or 'llama-3.3-70b-versatile'
+            payload = {'model': model, 'temperature': 0.2, 'max_tokens': 900,
+                       'messages': [{'role': 'system', 'content': system},
+                                    {'role': 'user', 'content': user}]}
+            r = requests.post(f"{base}/chat/completions", headers=headers, json=payload, timeout=60)
+        except (requests.RequestException, ValueError) as e:
+            raise RuntimeError(f"groq: network/response error ({scrub_secrets(e)[:100]})")
+        if r.status_code != 200:
+            raise self._ai_http_error('groq', r)
+        try:
+            text = (r.json()['choices'][0]['message']['content'] or '').strip()
+        except (ValueError, KeyError, IndexError, TypeError):
+            raise RuntimeError("groq: empty or invalid response")
+        if not text:
+            raise RuntimeError("groq: empty response")
+        return text, model
+
+    def _ai_generate(self, user_prompt):
+        """Ask the configured free provider(s); falls back to the next one on failure."""
+        providers = self.ai_providers()
+        if not providers:
+            raise RuntimeError("no AI key configured - run: python3 setup_apis.py (free Gemini or Groq key)")
+        errors = []
+        for name in providers:
+            try:
+                text, model = (self._ai_gemini if name == 'gemini' else self._ai_groq)(
+                    self.AI_SYSTEM, user_prompt)
+                return text, name, model
+            except RuntimeError as e:
+                log.debug("AI provider failed: %s", e)
+                errors.append(str(e))
+        raise RuntimeError(" | ".join(errors))
+
+    def _ai_report(self, title, user_prompt, sent):
+        """Run the AI request, print the briefing and save it (with the exact data sent) to a file."""
+        print(f"\n{M}[*]{W} {title} - asking the free AI provider (number and case details are NOT sent)...")
+        try:
+            text, provider, model = self._ai_generate(user_prompt)
+        except RuntimeError as e:
+            print(f"{R}[!]{W} AI briefing unavailable: {e}\n")
+            return None
+        print(f"\n{M}{title} ({provider}: {model}){W}")
+        print("  AI-generated from non-identifying metadata - verify before relying on it.\n")
+        for line in text.splitlines():
+            print(f"  {line}")
+        out_dir = self.cache_dir / "reports" / "ai"
+        try:
+            out_dir.mkdir(parents=True, exist_ok=True)
+            path = out_dir / f"AI_{title.split()[1].capitalize()}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(f"# PhoneBookLOCA {title}\n\nGenerated: {datetime.now().isoformat()}\n"
+                        f"Provider: {provider} ({model})\n\n"
+                        "**AI-generated - verify before relying on it.** The phone number, case number, "
+                        "officer, agency and file names were NOT sent to the provider.\n\n"
+                        f"## Briefing\n\n{text}\n\n## Exact data sent to the provider\n\n"
+                        f"```json\n{json.dumps(sent, indent=2)}\n```\n")
+            print(f"\n{G}[+]{W} Saved: {path}\n")
+        except OSError as e:
+            print(f"\n{Y}[!]{W} Could not save the briefing: {e}\n")
+        return text
+
+    def ai_analyze(self, result):
+        """AI briefing for one lookup result."""
+        facts = self.ai_facts(result)
+        prompt = ("Lookup metadata for ONE phone number (the number itself is withheld):\n"
+                  + json.dumps(facts, indent=2)
+                  + "\n\nWrite a briefing of at most 200 words covering: what the metadata indicates, "
+                    "its reliability limits, and 2-4 lawful next steps.")
+        return self._ai_report("AI Analysis", prompt, facts)
+
+    def ai_briefing(self, rows, case_type, priority):
+        """AI briefing for a whole LE list (items are numbered; no numbers or case ids are sent)."""
+        facts = self.ai_facts_from_rows(rows, case_type, priority)
+        prompt = (f"Lookup metadata for {len(rows)} phone numbers in ONE case (numbers withheld; items "
+                  "are only numbered):\n" + json.dumps(facts, indent=2)
+                  + "\n\nWrite a briefing of at most 300 words covering: overall patterns (shared carriers, "
+                    "line types, geography, porting, breach exposure), items that stand out (refer to them "
+                    "by item number), reliability limits, and 3-5 lawful next steps.")
+        return self._ai_report("AI Briefing", prompt, facts)
+
     # ------------------------------------------------------------- LE mode
 
-    def le_mode(self):
+    def le_mode(self, ai=False):
         self.banner()
         print(f"{R}[LE] LAW ENFORCEMENT MODE{W}")
         print("Enhanced Geolocation for Investigations\n")
@@ -1183,6 +1487,8 @@ identify or attribute the number to a person. Verify before relying on it.</p>
         print(f"\n{Y}[*]{W} Export format: 1) JSON  2) CSV  3) HTML  4) All  5) Skip")
         choice = input("Choice [1]: ").strip() or "1"
         self._le_export(result, case_num, choice)
+        if ai:
+            self.ai_analyze(result)
 
     # ----------------------------------------------- LE mode: number list
 
@@ -1236,7 +1542,7 @@ identify or attribute the number to a person. Verify before relying on it.</p>
             return "no breach found"
         return "not checked"
 
-    def le_batch(self, numbers):
+    def le_batch(self, numbers, ai=False):
         """LE mode over a list of numbers: case details asked ONCE, one case +
         full LE report set per number, then one summary table for the whole list."""
         self.banner()
@@ -1302,6 +1608,8 @@ identify or attribute the number to a person. Verify before relying on it.</p>
             print(f"\n{Y}[!]{W} Interrupted - writing summary for the {len(rows)} number(s) done so far")
 
         self._le_summary(rows, case_base, officer, agency, case_type, priority, choice)
+        if ai and rows:
+            self.ai_briefing(rows, case_type, priority)
 
     def _le_summary(self, rows, case_base, officer, agency, case_type, priority, choice):
         """Print the end-of-run table and write the summary files."""
@@ -1405,7 +1713,7 @@ h1{{color:#f0f}}</style></head><body>
 
     def interactive(self):
         self.banner()
-        print("Commands: <number> | geo <number> | osint <number> | batch <file> | le-mode [--batch <file>] | help | quit\n")
+        print("Commands: <number> | geo <number> | osint <number> | ai <number> | batch <file> | le-mode [--batch <file>] | help | quit\n")
 
         while True:
             try:
@@ -1440,6 +1748,11 @@ h1{{color:#f0f}}</style></head><body>
                 if low.startswith('geo '):
                     self.lookup(cmd[4:].strip(), enhanced=True)
                     continue
+                if low.startswith('ai '):
+                    result = self.lookup(cmd[3:].strip(), use_cache=False, enhanced=True, osint=True)
+                    if result:
+                        self.ai_analyze(result)
+                    continue
                 if low.startswith('osint '):
                     self.lookup(cmd[6:].strip(), enhanced=True, osint=True)
                     continue
@@ -1464,6 +1777,7 @@ Commands:
   <number>         - Standard lookup
   geo <number>     - Enhanced geolocation + porting + history
   osint <number>   - Passive OSINT leads (dorks, lookup URLs, optional Go scraper)
+  ai <number>      - Full lookup + AI briefing (free Gemini/Groq key; the number is never sent)
   batch <file>     - Analyze multiple numbers, saves a risk-scored JSON report
   le-mode          - Law enforcement case mode (JSON/CSV/HTML export)
                      le-mode --batch <file> runs it on a whole list of numbers
@@ -1478,9 +1792,10 @@ v{VERSION} additions:
   - CSV/HTML export alongside JSON for LE reports
   - Cross-platform: Windows, macOS, Linux
   - OSINT breach check - works with no API: drop breach files in
-    ~/.phonebookloca/breach_data/ to search them offline. Optional online lookups:
-    HIBP_API_KEY / LEAKCHECK_API_KEY. Breach reports are saved under
-    ~/.phonebookloca/reports/breach/
+    ~/.phonebookloca/breach_data/ to search them offline. Breach reports are saved
+    under ~/.phonebookloca/reports/breach/
+  - AI briefings (--ai / ai <number>) using a FREE Gemini or Groq key. Run
+    python3 setup_apis.py to get the exact links and set the keys up automatically.
 """)
 
 
@@ -1495,6 +1810,8 @@ def build_arg_parser():
     parser.add_argument('--batch', metavar='FILE',
                         help='Batch-analyze numbers from a file (one per line); with --le-mode, runs LE mode on every number')
     parser.add_argument('--no-cache', action='store_true', help='Skip the local cache')
+    parser.add_argument('--ai', action='store_true',
+                        help='Add an AI-written briefing (free Gemini/Groq key via setup_apis.py; the number is never sent). Implies --geo --osint')
     parser.add_argument('--output', '-o', metavar='FILE', help='Save the result/report to this path')
     parser.add_argument('--verbose', '-v', action='store_true', help='Verbose diagnostic logging')
     parser.add_argument('--version', action='version', version=f'PhoneBookLOCA v{VERSION}')
@@ -1519,9 +1836,9 @@ def main():
             except OSError as e:
                 print(f"Error: {e}")
                 sys.exit(1)
-            intel.le_batch(nums)
+            intel.le_batch(nums, ai=args.ai)
         else:
-            intel.le_mode()
+            intel.le_mode(ai=args.ai)
         return
 
     if args.batch:
@@ -1533,12 +1850,14 @@ def main():
             sys.exit(1)
         intel.banner()
         intel.batch(nums, output=args.output)
+        if args.ai:
+            print(f"{Y}[i]{W} --ai works with a single number or with --le-mode --batch FILE\n")
         return
 
     if args.number:
         intel.banner()
         result = intel.lookup(args.number, use_cache=not args.no_cache,
-                               enhanced=args.geo, osint=args.osint)
+                               enhanced=args.geo or args.ai, osint=args.osint or args.ai)
         if result and args.output:
             try:
                 with open(args.output, 'w', encoding='utf-8') as f:
@@ -1546,6 +1865,8 @@ def main():
                 print(f"{G}[+]{W} Saved to {args.output}\n")
             except OSError as e:
                 print(f"{R}[!]{W} Could not write {args.output}: {e}\n")
+        if result and args.ai:
+            intel.ai_analyze(result)
         return
 
     intel.interactive()
